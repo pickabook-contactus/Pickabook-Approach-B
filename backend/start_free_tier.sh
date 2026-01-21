@@ -2,7 +2,7 @@
 
 # Run DB Migrations
 echo "Running DB Migrations..."
-python -m app.db.init_db # Or whatever script we trust. e.g. migrate_db.py or just rely on 'create_all' in main.py? 
+# python -m app.db.init_db # Skipped: Module not found, using migrate_db.py instead 
 # Check main.py. It typically calls Base.metadata.create_all(bind=engine).
 # If correct, we don't need manual migration for tables, BUT we might need data/columns.
 # Let's rely on 'python migrate_db.py' if it exists and works.
