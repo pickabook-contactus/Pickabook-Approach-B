@@ -11,11 +11,12 @@ def validate_photo(photo_url: str) -> dict:
     Returns: {"valid": bool, "reason": str}
     """
     # 0. Safety Check for AI Model
-    if insight_service.app is None:
-        print("WARNING: FaceAnalysis app is not initialized. Skipping Face/Gender checks.")
+    model = insight_service.get_app()
+    if model is None:
+        print("WARNING: FaceAnalysis app failed to load. Skipping Face/Gender checks.")
         return {
              "valid": False, 
-             "reason": "AI System is warming up. Please wait 10 seconds and try again.",
+             "reason": "AI System could not initialize. Check server logs.",
              "checks": {"face_detected": False}
         }
 

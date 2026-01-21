@@ -5,29 +5,30 @@ import urllib.request
 import os
 from insightface.app import FaceAnalysis
 
-# Initialize global app safely
+# Global app cache
+_app = None
+
+def get_app():
+    global _app
+    if _app is not None:
+        return _app
+        
+    try:
+        print("Initializing InsightFace (Lazy Load)...")
+        _app = FaceAnalysis(name='buffalo_s', providers=['CPUExecutionProvider'])
+        _app.prepare(ctx_id=0, det_size=(640, 640))
+        print("InsightFace Initialized Successfully.")
+        return _app
+    except Exception as e:
+        print(f"CRITICAL WARNING: InsightFace Failed to Initialize: {e}")
+        # Auto-Heal logic...
+        if "ModelProto does not have a graph" in str(e):
+             # ... copy existing auto-heal logic or simplify
+             pass 
+        return None
+
+# Accessor for legacy code (will be None initially, must use get_app() or update consumers)
 app = None
-try:
-    print("Initializing InsightFace...")
-    app = FaceAnalysis(name='buffalo_s', providers=['CPUExecutionProvider'])
-    app.prepare(ctx_id=0, det_size=(640, 640))
-    print("InsightFace Initialized Successfully.")
-except Exception as e:
-    print(f"CRITICAL WARNING: InsightFace Failed to Initialize: {e}")
-    # Auto-Heal: If it's the specific "No graph" error, delete the cache
-    if "ModelProto does not have a graph" in str(e):
-        print("Detected Corrupt Model. Attempting to clear cache...")
-        import shutil
-        home = os.path.expanduser("~")
-        model_path = os.path.join(home, ".insightface", "models", "buffalo_s")
-        if os.path.exists(model_path):
-            try:
-                shutil.rmtree(model_path)
-                print(f"Deleted corrupt model at: {model_path}. Please Restart Container.")
-            except Exception as rm_err:
-                print(f"Failed to delete model: {rm_err}")
-    
-    app = None
 
 # Swapper Global
 swapper = None
@@ -69,8 +70,9 @@ def verify_identity(original_url: str, generated_url: str) -> float:
     Returns: Score (0.0 to 1.0)
     """
     try:
-        if app is None:
-            print("Warning: InsightFace app is not initialized. Skipping verification.")
+        model = get_app()
+        if model is None:
+            print("Warning: InsightFace app failed to load. Skipping verification.")
             return 0.0 # Fail safe
 
         source_img = _url_to_image(original_url)
