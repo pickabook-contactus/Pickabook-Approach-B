@@ -3,10 +3,18 @@ import axios from 'axios';
 // Smart API Base: Bypass Next.js Proxy on Localhost to avoid Body Size Limits/Timeouts
 // For Ngrok/Production, use relative path to route through Next.js/Nginx
 const getApiBase = () => {
+  // 1. Check for Environment Variable (Production/Vercel)
+  if (process.env.NEXT_PUBLIC_API_URL) {
+    return process.env.NEXT_PUBLIC_API_URL;
+  }
+
+  // 2. Localhost Logic (Direct to 8000)
   if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
     return 'http://localhost:8000';
   }
-  return ''; // Relative path for Proxies
+
+  // 3. Fallback (Relative path for Proxies)
+  return '';
 };
 
 const API_BASE = getApiBase();
