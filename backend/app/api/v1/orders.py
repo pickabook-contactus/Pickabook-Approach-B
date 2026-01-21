@@ -46,15 +46,17 @@ def upload_photo(file: UploadFile = File(...)):
         fake_url = Path(os.path.abspath(file_path)).as_uri()
                 
         # Run Validation
-        validation_result = validator.validate_photo(fake_url)
-        is_valid = validation_result.get("valid", False)
+        # SKIP VALIDATION for Memory Safety on Render Free Tier
+        # The AI model requires 300MB+ RAM which crashes the 512MB container during upload.
+        # validation_result = validator.validate_photo(fake_url)
         
+        # Default Success Response
         return {
             "url": fake_url, 
             "local_path": file_path, 
-            "valid": is_valid,
-            "reason": validation_result.get("reason"),
-            "checks": validation_result.get("checks", {})
+            "valid": True, # Mock Success
+            "reason": "Validation skipped for performance",
+            "checks": {"skipped": True}
         }
     except Exception as e:
         print(f"Upload Endpoint Critical Error: {e}")
