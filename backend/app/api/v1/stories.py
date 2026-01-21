@@ -193,6 +193,9 @@ def seed_stories(db: Session = Depends(get_db)):
     if existing:
         space_story_id = existing.id
         print("Story already exists. Checking for updates...")
+        # Force update cover image in case BASE_URL changed (e.g. localhost -> render)
+        existing.cover_image_url = "https://via.placeholder.com/400x600?text=Space+Adventure"
+        db.commit()
     else:
         # Create The Space Adventure
         space_story = Story(
