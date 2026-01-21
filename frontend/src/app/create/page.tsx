@@ -1,12 +1,12 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import UploadZone from '@/components/UploadZone';
 import { api } from '@/lib/api';
 import { Loader2, BookOpen, Star, UserPlus } from 'lucide-react';
 
-export default function CreatePage() {
+function CreatePageContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
 
@@ -156,5 +156,13 @@ export default function CreatePage() {
                 </form>
             </div>
         </div>
+    );
+}
+
+export default function CreatePage() {
+    return (
+        <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-blue-500" /></div>}>
+            <CreatePageContent />
+        </Suspense>
     );
 }
