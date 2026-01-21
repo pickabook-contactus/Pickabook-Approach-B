@@ -16,5 +16,10 @@ COPY . .
 COPY start_free_tier.sh .
 RUN chmod +x start_free_tier.sh
 
+# Hugging Face Spaces Requirement: User 1000
+RUN useradd -m -u 1000 user
+RUN chown -R user:user /app
+USER user
+
 # Use shell script to run both Worker and API (Free Tier Optimization)
 CMD ["./start_free_tier.sh"]

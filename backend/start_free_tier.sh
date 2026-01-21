@@ -15,4 +15,6 @@ celery -A app.core.celery_app worker --loglevel=info --concurrency=1 &
 
 # Start FastAPI Backend in foreground
 echo "Starting FastAPI Backend..."
+# Default to 7860 (Hugging Face) if PORT is not set
+export PORT=${PORT:-7860}
 uvicorn app.main:app --host 0.0.0.0 --port $PORT
