@@ -1,0 +1,98 @@
+version: '3.8'
+
+services:
+  # 1. Database (Postgres)
+  # Uses standard image, persists data to a named volume 'postgres_data'
+  db:
+    image: postgres:15-alpine
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - POSTGRES_DB=${POSTGRES_DB:-postgres}
+    networks:
+      - pickabook-network
+
+  # 2. Redis (Message Broker)
+  # Essential for Celery task queue
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    networks:
+      - pickabook-network
+  # 3. Backend API (FastAPI) - DISABLED for Hybrid Mode
+  # Run manually: python main.py
+  # backend:
+  #   build:
+  #     context: ./backend
+  #     dockerfile: Dockerfile
+  #   ports:
+  #     - "8000:8000"
+  #   volumes:
+  #     - ./backend:/app
+  #     - ./backend/uploads:/app/uploads # Persist uploads
+  #   depends_on:
+  #     - db
+  #     - redis
+  #   env_file:
+  #     - .env
+  #   environment:
+  #     - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-postgres}
+  #     - REDIS_URL=redis://redis:6379/0
+  #     - POSTGRES_SERVER=db
+  #   command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+  #   networks:
+  #     - pickabook-network
+
+  # 4. AI Worker (Celery) - DISABLED for Hybrid Mode
+  # Run manually: celery -A app.core.celery_app worker
+  # worker:
+  #   build:
+  #     context: ./backend
+  #     dockerfile: Dockerfile
+  #   volumes:
+  #     - ./backend:/app
+  #     - ./backend/uploads:/app/uploads # Share uploads with backend
+  #   depends_on:
+  #     - redis
+  #     - backend
+  #   env_file:
+  #     - .env
+  #   environment:
+  #     - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-postgres}
+  #     - REDIS_URL=redis://redis:6379/0
+  #   # Concurrency 1 for stability on local machines
+  #   command: celery -A app.core.celery_app worker --loglevel=info --concurrency=1
+  #   networks:
+  #     - pickabook-network
+  # 5. Frontend (Next.js) - DISABLED to save resources/prevent crash
+  # Run this manually: cd frontend && npm run dev
+  # frontend:
+  #   build:
+  #     context: ./frontend
+  #     dockerfile: Dockerfile
+  #   ports:
+  #     - "3000:3000"
+  #   volumes:
+  #     - ./frontend:/app
+  #     - /app/node_modules
+  #   environment:
+  #     # Browser can hit localhost:8000, Server-side hits backend:8000
+  #     - NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1
+  #   depends_on:
+  #     - backend
+  #   command: npm run dev
+  #   networks:
+  #     - pickabook-network
+
+volumes:
+  postgres_data:
+
+
+networks:
+  pickabook-network:
+    driver: bridge

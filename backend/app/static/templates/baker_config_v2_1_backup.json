@@ -1,0 +1,55 @@
+{
+    "book_id": "baker_adventure_v1",
+    "title": "The Little Baker",
+    "dimensions": {
+        "width": 1024,
+        "height": 1024
+    },
+    "style_config": {
+        "base_model": "zsxkib/instant-id",
+        "prompt_suffix": "3D animated style, close up of a cute happy child baker wearing a white chef hat and uniform, holding a tray of cupcakes with pink rose frosting, standing in a cozy bakery with wooden shelves in the background, soft warm cinematic lighting, highly detailed 3D render, 8k resolution, disney pixar style, volumetric lighting, perfect smooth skin, round stylized large cartoon eyes, symmetrical face, cute, adorable, innocent, soft features, smiling eyes, happy eyes, warm expression, joyful",
+        "negative_prompt": "glasses, sunglasses, glasses marks, nose pads, spectacle marks, shadow of glasses, cross-eyed, strabismus, weird eyes, distorted eyes, oblong eyes, squashed eyes, asymmetry, acne, moles, blemishes, pimples, rough skin, double eyebrows, semi-realistic, uncanny valley, humanoid, old face, wrinkles, photorealistic, real photo, gritty, dark, deformed, low resolution, 2D, sketch, drawing, painting, bad anatomy, blurry, skin texture, pores, human, photograph, standard lighting, sad eyes, crying eyes, fearful, spooky, cold expression, dead eyes"
+    },
+    "pages": [
+        {
+            "page_number": 1,
+            "image_file": "child_can_be.png",
+            "face_data": {
+                "x": 340,
+                "y": 180,
+                "width": 345,
+                "angle": 0
+            }
+        },
+        {
+            "page_number": 2,
+            "image_file": "child_can_be.png",
+            "face_data": {
+                "x": 340,
+                "y": 180,
+                "width": 345,
+                "angle": 0
+            }
+        },
+        {
+            "page_number": 3,
+            "image_file": "child_can_be.png",
+            "face_data": {
+                "x": 340,
+                "y": 180,
+                "width": 345,
+                "angle": 0
+            }
+        },
+        {
+            "page_number": 4,
+            "image_file": "child_can_be.png",
+            "face_data": {
+                "x": 340,
+                "y": 180,
+                "width": 345,
+                "angle": 0
+            }
+        }
+    ]
+}

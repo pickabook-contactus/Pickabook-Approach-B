@@ -1,0 +1,19 @@
+fastapi
+uvicorn[standard]
+celery[redis]
+sqlalchemy
+psycopg2-binary
+asyncpg
+pydantic-settings
+python-dotenv
+python-multipart
+# AI Pipeline Dependencies
+replicate
+insightface==0.7.3
+onnxruntime
+opencv-python-headless
+numpy
+Pillow
+requests
+httpx
+rembg

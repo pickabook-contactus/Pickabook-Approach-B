@@ -1,0 +1,8 @@
+node_modules
+.next
+.git
+.venv
+__pycache__
+*.pyc
+uploads
+assets/orders/debug_renders

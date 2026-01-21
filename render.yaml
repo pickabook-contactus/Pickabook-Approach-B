@@ -1,0 +1,42 @@
+services:
+  # 1. Web Service (FastAPI)
+  - type: web
+    name: pickabook-backend
+    runtime: docker
+    repo: https://github.com/YOUR_USERNAME/pickabook-approach-b
+    rootDir: backend
+    plan: free
+    envVars:
+      - key: DATABASE_URL
+        sync: false # Connect to Supabase (Transaction Pooler port 6543 recommended)
+      - key: REDIS_URL
+        sync: false # Connect to Upstash (rediss://...)
+      - key: REPLICATE_API_TOKEN
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      # CORS Origin for Vercel
+      - key: BACKEND_CORS_ORIGINS
+        value: "[\"*\"]" 
+    buildCommand: "./start_free_tier.sh"
+    startCommand: "uvicorn app.main:app --host 0.0.0.0 --port 10000"
+
+  # 2. Worker Service (Celery)
+  - type: worker
+    name: pickabook-worker
+    runtime: docker
+    rootDir: backend
+    plan: free
+    # Note: Free Tier has NO persistent disk. Images uploaded/generated will vanish on restart.
+    # To fix this, we need S3 or Supabase Storage integration in the code.
+    envVars:
+      - key: DATABASE_URL
+        sync: false # Connect to Supabase
+      - key: REDIS_URL
+        sync: false # Connect to Upstash
+      - key: REPLICATE_API_TOKEN
+        sync: false
+    startCommand: "celery -A app.core.celery_app worker --loglevel=info --pool=solo"
+    # Added --pool=solo because default prefork often crashes on low-memory (512MB) free tiers.
+
+# No internal databases defined (Using External Supabase + Upstash)
