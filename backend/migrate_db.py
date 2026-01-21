@@ -22,9 +22,10 @@ def migrate():
         with engine.connect() as conn:
             # 1. Create Stories table if not exists
             print("Creating stories table...")
+            # Changed ID to VARCHAR to support "magic_of_money" and custom IDs
             conn.execute(text("""
                 CREATE TABLE IF NOT EXISTS stories (
-                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    id VARCHAR PRIMARY KEY,  
                     title VARCHAR NOT NULL,
                     description TEXT,
                     cover_image_url VARCHAR,
@@ -33,12 +34,12 @@ def migrate():
                 );
             """))
 
-            # 2. Create StoryPages table if not exists
+            # 2. Create StoryPages table
             print("Creating story_pages table...")
             conn.execute(text("""
                 CREATE TABLE IF NOT EXISTS story_pages (
                     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                    story_id UUID NOT NULL REFERENCES stories(id) ON DELETE CASCADE,
+                    story_id VARCHAR NOT NULL, -- Logical link only, no strict FK for MVP flexibility
                     page_number INTEGER NOT NULL,
                     template_image_url VARCHAR NOT NULL,
                     face_x INTEGER DEFAULT 100,
@@ -60,7 +61,7 @@ def migrate():
                 print("Adding story_id column to orders table...")
                 conn.execute(text("""
                     ALTER TABLE orders 
-                    ADD COLUMN story_id UUID REFERENCES stories(id);
+                    ADD COLUMN story_id VARCHAR; -- Logical link, no FK
                 """))
             else:
                 print("story_id column already exists.")
