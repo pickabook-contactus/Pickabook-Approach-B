@@ -21,6 +21,7 @@ class Settings(BaseSettings):
 
     # Security
     SECRET_KEY: str = "change_me"
+    BACKEND_CORS_ORIGINS: list[str] = ["*"] # Default to wildcard, override in Render
 
     # AI Service Keys
     REPLICATE_API_TOKEN: Optional[str] = None

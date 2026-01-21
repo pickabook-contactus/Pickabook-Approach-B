@@ -38,8 +38,12 @@ origins = [
     "http://127.0.0.1:3000",
     "http://localhost:8000",
     "http://127.0.0.1:8000",
-    "*", # Keep for fallback if explicit lists fail, but usually explicit is preferred with credentials
+    "https://pickabook-approach-b.vercel.app",  # Explicit Vercel Origin
 ]
+
+# Add origins from config
+if settings.BACKEND_CORS_ORIGINS:
+    origins.extend(settings.BACKEND_CORS_ORIGINS)
 
 app.add_middleware(
     CORSMiddleware,
