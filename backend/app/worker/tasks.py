@@ -140,7 +140,8 @@ def process_order_v2(self, order_id: str, photo_url: str):
                 # Assuming images are in assets/{book_id}/ or similar. 
                 # For now using the filename from config strictly.
                 # Use 'static/templates/' as base for now to match 'child_can_be.png' setup
-                template_url = f"http://localhost:8000/static/templates/{page_conf.image_file}"
+                # Use settings.BASE_URL dynamic path
+                template_url = f"{settings.BASE_URL}/static/templates/{page_conf.image_file}"
                 
                 # If using the dynamic upload system, we'd query the DB here.
                 # But for strict config compliance:

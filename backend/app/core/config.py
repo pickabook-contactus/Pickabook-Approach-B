@@ -1,4 +1,5 @@
 from typing import Any, Dict, Optional
+import os
 from pydantic import PostgresDsn, validator
 from pydantic_settings import BaseSettings
 
@@ -14,7 +15,9 @@ class Settings(BaseSettings):
     REDIS_URL: str
     
     # URL Configuration
-    BASE_URL: str = "http://localhost:8000"  # Override in .env with Ngrok URL
+    # URL Configuration
+    # Auto-detect Render URL or default to localhost
+    BASE_URL: str = os.getenv("RENDER_EXTERNAL_URL", "http://localhost:8000")
 
     # Security
     SECRET_KEY: str = "change_me"
