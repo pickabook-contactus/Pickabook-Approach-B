@@ -219,11 +219,11 @@ if __name__ == "__main__":
     # Path to the reference characters we just copied (renamed for clarity in test)
     # Note: In real app, these come from the Generator
     result = engine.composite_page(
-        book_id="book_sample",
+        book_id="magic_of_money",
         page_id="p001",
         character_map={
-            "child": "backend/assets/templates/book_sample/v1/pages/p001/ref_child.png",
-            "mom": "backend/assets/templates/book_sample/v1/pages/p001/ref_mom.png"
+            "child": "backend/assets/templates/magic_of_money/v1/pages/p001/ref_child.png",
+            "mom": "backend/assets/templates/magic_of_money/v1/pages/p001/ref_mom.png"
         }
     )
     print(f"Test Result: {result}")
