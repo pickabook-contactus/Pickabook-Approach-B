@@ -66,6 +66,25 @@ class CompositorEngine:
         # Let's apply it if the conversion resulted in an opaque image that was originally likely JPG/PNG-no-alpha
         return self._remove_white_bg(img)
 
+    def _trim_transparency(self, img: Image.Image, threshold: int = 50) -> Image.Image:
+        """
+        Trims transparent borders.
+        Uses a threshold to ignore faint shadows/glows (alpha < threshold).
+        Reverted to 50 (from 240) to prevent cutting off non-solid limbs.
+        """
+        if img.mode != 'RGBA':
+            img = img.convert('RGBA')
+            
+        # Create a binary mask of the alpha channel based on threshold
+        alpha = img.split()[3]
+        # Point transform: 0 if < threshold, 255 if >= threshold
+        mask = alpha.point(lambda p: 255 if p > threshold else 0)
+        
+        bbox = mask.getbbox()
+        if bbox:
+            return img.crop(bbox)
+        return img # Empty or full
+
     def composite_page(self, book_id: str, page_id: str, character_map: Dict[str, str], version: str = "v1") -> str:
         """
         Composites a page by placing characters into their slots.
@@ -84,9 +103,12 @@ class CompositorEngine:
             template = self.load_template(book_id, page_id, version)
             bg_image = Image.open(template["bg_path"]).convert("RGBA")
             
+            # DEBUG: Log received character map
+            print(f"[ENGINE DEBUG] Received character_map: {character_map}")
+            
             # 2. Process Slots
             slots = template["slots_data"].get("slots", [])
-            # Sort slots by z_index (lower index first, so higher index draws on top)
+            # Sort slots by z_index
             slots.sort(key=lambda x: x.get("z_index", 0))
 
             for slot in slots:
@@ -97,39 +119,78 @@ class CompositorEngine:
                     print(f"Compositing role '{role}' from {char_path}")
                     char_img = self._load_image(char_path)
 
-                    # Get Slot Dimensions
+                    # Get Slot Position (Moved up for scope visibility)
                     bbox = slot["bbox_px"]
                     slot_x, slot_y = bbox["x"], bbox["y"]
-                    slot_w, slot_h = bbox["w"], bbox["h"]
 
-                    # 3. Scale Character
-                    # Simple "Fit Height" logic as per spec (or fit box)
-                    # For Version 1, we will fit to height, preserving aspect ratio
-                    # But also ensure it doesn't exceed width
+                    # ============================================================
+                    # REFERENCE-ANCHORED PLACEMENT ALGORITHM
+                    # ============================================================
+                    # 1. Load reference image and find where the character is
+                    # 2. Scale generated character to match reference character size
+                    # 3. Place at exact same position as reference character
+                    # ============================================================
                     
-                    # Calculate target size
-                    scale_h = slot_h / char_img.height
-                    target_w = int(char_img.width * scale_h)
-                    target_h = slot_h
-
-                    # If width exceeds slot width, scale down by width
-                    if target_w > slot_w:
-                         scale_w = slot_w / char_img.width
-                         target_w = slot_w
-                         target_h = int(char_img.height * scale_w)
-
-                    resized_char = char_img.resize((target_w, target_h), Image.Resampling.LANCZOS)
-
-                    # 4. Placement (Align Bottom/Feet)
-                    # Center horizontally in slot (or use anchor if we had it, for now Center/Bottom)
-                    # X: Center of slot
-                    final_x = slot_x + (slot_w - target_w) // 2
+                    ref_image_name = f"ref_{role}.png"
+                    ref_image_path = os.path.join(template["dir"], ref_image_name)
                     
-                    # Y: Bottom of slot (Feet alignment)
-                    final_y = slot_y + (slot_h - target_h)
-
-                    # Paste (Alpha Composite)
-                    bg_image.alpha_composite(resized_char, (int(final_x), int(final_y)))
+                    if os.path.exists(ref_image_path):
+                        ref_img = Image.open(ref_image_path).convert("RGBA")
+                        
+                        # Find the bounding box of non-transparent pixels in reference
+                        # This tells us WHERE the character is in the reference image
+                        ref_alpha = ref_img.split()[3]
+                        ref_mask = ref_alpha.point(lambda p: 255 if p > 50 else 0)
+                        ref_char_bbox = ref_mask.getbbox()
+                        
+                        if ref_char_bbox:
+                            ref_char_x, ref_char_y, ref_char_x2, ref_char_y2 = ref_char_bbox
+                            ref_char_w = ref_char_x2 - ref_char_x
+                            ref_char_h = ref_char_y2 - ref_char_y
+                            
+                            print(f"Reference {role} character found at: x={ref_char_x}, y={ref_char_y}, w={ref_char_w}, h={ref_char_h}")
+                            
+                            # Find bounding box of generated character
+                            gen_alpha = char_img.split()[3]
+                            gen_mask = gen_alpha.point(lambda p: 255 if p > 50 else 0)
+                            gen_char_bbox = gen_mask.getbbox()
+                            
+                            if gen_char_bbox:
+                                gen_char_x, gen_char_y, gen_char_x2, gen_char_y2 = gen_char_bbox
+                                gen_char_w = gen_char_x2 - gen_char_x
+                                gen_char_h = gen_char_y2 - gen_char_y
+                                
+                                # Crop generated character to its content
+                                gen_cropped = char_img.crop(gen_char_bbox)
+                                
+                                # Scale to match reference character size
+                                resized_char = gen_cropped.resize((ref_char_w, ref_char_h), Image.Resampling.LANCZOS)
+                                
+                                # Calculate placement position
+                                # The reference character was at (ref_char_x, ref_char_y) WITHIN the reference image.
+                                # The reference image itself is placed at (slot_x, slot_y) on the page.
+                                # So final global position is:
+                                final_x = slot_x + ref_char_x
+                                final_y = slot_y + ref_char_y
+                                
+                                print(f"Placing {role} at ({final_x}, {final_y}) with size ({ref_char_w}x{ref_char_h})")
+                                
+                                # Paste
+                                bg_image.alpha_composite(resized_char, (int(final_x), int(final_y)))
+                            else:
+                                print(f"Warning: Generated character for {role} appears empty!")
+                        else:
+                            print(f"Warning: Reference character for {role} appears empty!")
+                        
+                        ref_img.close()
+                    else:
+                        # Fallback: use slot coordinates
+                        bbox = slot["bbox_px"]
+                        slot_x, slot_y = bbox["x"], bbox["y"]
+                        target_w, target_h = bbox["w"], bbox["h"]
+                        print(f"No reference found, using slot: ({slot_x}, {slot_y}) size {target_w}x{target_h}")
+                        resized_char = char_img.resize((target_w, target_h), Image.Resampling.LANCZOS)
+                        bg_image.alpha_composite(resized_char, (int(slot_x), int(slot_y)))
 
             # 5. Save Output
             output_dir = os.path.join(self.assets_root, "orders", "debug_renders")
