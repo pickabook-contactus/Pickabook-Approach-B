@@ -27,12 +27,11 @@ def on_startup():
     Base.metadata.create_all(bind=engine)
 
 
-from app.api.v1 import orders, stories, ai, test
+from app.api.v1 import orders, stories, ai
 
 app.include_router(orders.router, prefix="/api/v1/orders", tags=["orders"])
 app.include_router(stories.router, prefix="/api/v1/stories", tags=["stories"])
 app.include_router(ai.router, prefix="/api/v1/ai", tags=["AI Tooling"])
-app.include_router(test.router, prefix="/api/v1/test", tags=["Test - Cheap Iteration"])
 
 origins = [
     "http://localhost:3000",

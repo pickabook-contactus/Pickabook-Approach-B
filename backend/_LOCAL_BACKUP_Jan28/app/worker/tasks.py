@@ -1,5 +1,4 @@
 from app.core.celery_app import celery_app
-# UPDATED BY AI: Includes rembg fix for empty images
 from app.services.ai import validator, replicate, insight, inpainting
 from app.services.compositor import engine
 from app.db.session import SessionLocal
@@ -131,9 +130,8 @@ def process_order_v2(self, order_id: str, photo_url: str):
                 ).first()
 
                 if existing_page and existing_page.image_url:
-                     # USER REQUEST: Stop caching. Always regenerate to ensure latest code/prompt is used.
-                     print(f"Page {page_conf.page_number} exists, but forcing regeneration as per configuration.")
-                     # continue
+                    print(f"Page {page_conf.page_number} already exists in DB. Skipping generation.")
+                    continue
                 # Construct path to template image
                 # Assuming images are in assets/{book_id}/ or similar. 
                 # For now using the filename from config strictly.
@@ -222,213 +220,80 @@ def process_approach_b(self, order_id: str, photo_url: str, book_id: str = "book
     3. Composite them.
     4. Save to DB.
     """
-    print(f"Starting Approach B (ADVANCED MODE) for Order {order_id}...")
+    print(f"Starting Approach B (Simple Mode) for Order {order_id}...")
     db = SessionLocal()
     order = db.query(Order).get(order_id)
     if not order:
         return "ORDER_NOT_FOUND"
 
     try:
-        # Config & Services
+        # Config
         assets_root = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "assets")
-        
-        # Initialize Advanced Services
-        identity_service = IdentityService(assets_root)
-        generator_service = GeneratorService(assets_root)
         comp_service = CompositorEngine(assets_root)
         
-        # Helper to resolve file URLs
+        # 1. Prepare User Assets (Remove BG)
+        # We need to handle File URLs or HTTP URLs (if using S3 later)
         def resolve_local_path(url_str):
             if not url_str: return None
-            path = url_str
+            # Handle standard file:// URI
             if url_str.startswith("file:///"):
                 from urllib.parse import unquote
+                # Strip file:/// (8 chars)
                 path = unquote(url_str[8:])
-            elif url_str.startswith("file://"):
+                # On Windows, path is now "C:/..." or "e:/..." which is valid.
+                return path
+            elif url_str.startswith("file://"): # Just 2 slashes? Unusual but possible
                 from urllib.parse import unquote
                 path = unquote(url_str[7:])
-            
-            # Robust Existence Check
-            if os.path.exists(path):
                 return path
-            
-            # Fallback 1: Try adding /app/ prefix if missing (common in HF)
-            if path.startswith("uploads/"):
-                alt = os.path.join("/app", path)
-                if os.path.exists(alt): return alt
-                
-            # Fallback 2: Try stripping any leading paths and looking in CWD/uploads
-            basename = os.path.basename(path)
-            alt2 = os.path.join(os.getcwd(), "uploads", basename)
-            if os.path.exists(alt2): return alt2
-            
-            # Fallback 3: Look in /app/uploads/ directly
-            alt3 = os.path.join("/app/uploads", basename)
-            if os.path.exists(alt3): return alt3
-            
-            print(f"Path Resolution Warning: Could not find {path} (or fallbacks)")
-            return path
+            return url_str
 
+        child_raw_path = resolve_local_path(order.photo_url)
+        mom_raw_path = resolve_local_path(order.mom_photo_url)
         
-        # 1. Identity Profiling (Phase 2)
-        print("--- Phase 2: Identity Profiling ---")
+        print(f"Resolving Paths:\nChild: {order.photo_url} -> {child_raw_path}\nMom: {order.mom_photo_url} -> {mom_raw_path}")
         
-        # Resolve Inputs
-        child_photo_path = resolve_local_path(order.photo_url)
-        mom_photo_path = resolve_local_path(order.mom_photo_url)
-        
-        identities = {}
-        
-        # Profile Child
-        if child_photo_path and os.path.exists(child_photo_path):
-            print(f"Profiling Child from {child_photo_path}...")
-            try:
-                identities["child"] = identity_service.create_identity(order_id, child_photo_path, "child")
-            except Exception as e:
-                print(f"Identity Failed for Child: {e}. Fallback to raw.")
-                # Fallback? Or fail? The generator needs identity.
-                # If identity fails, we can't do advanced generation.
-                raise e
-        else:
-            raise FileNotFoundError(f"Child photo not found at {child_photo_path}")
+        character_map = {}
+        if child_raw_path:
+            if os.path.exists(child_raw_path):
+                character_map["child"] = child_raw_path
+            else:
+                print(f"WARNING: Child path does not exist: {child_raw_path}")
 
-        # Profile Mom
-        if mom_photo_path and os.path.exists(mom_photo_path):
-             print(f"Profiling Mom from {mom_photo_path}...")
-             try:
-                 identities["mom"] = identity_service.create_identity(order_id, mom_photo_path, "mom")
-             except Exception as e:
-                 print(f"Identity Failed for Mom: {e}")
-                 raise e
-        
-        print("Identity Profiles Created.")
-
-        # ============================================================
-        # PHASE 1: GENERATE MASTER CHARACTERS (Once per order)
-        # ============================================================
-        print("\n" + "="*60)
-        print("PHASE 1: MASTER CHARACTER GENERATION")
-        print("="*60)
-        
-        # Find master reference images (in book root directory)
-        template_root = os.path.join(assets_root, "templates", book_id, "v1")
-        template_pages_dir = os.path.join(template_root, "pages")
-        
+        if mom_raw_path:
+             if os.path.exists(mom_raw_path):
+                character_map["mom"] = mom_raw_path
+             else:
+                print(f"WARNING: Mom path does not exist: {mom_raw_path}")
+             
+        # 2. Iterate Pages
+        # Find all pages in: backend/assets/templates/{book_id}/v1/pages/
+        template_pages_dir = os.path.join(assets_root, "templates", book_id, "v1", "pages")
         if not os.path.exists(template_pages_dir):
+            print(f"Template dir not found: {template_pages_dir}")
             raise FileNotFoundError(f"Template directory not found for {book_id}")
-        
-        masters = {}  # Will store paths to generated master characters
-        
-        # Generate Master for Child
-        master_ref_child = os.path.join(template_root, "master_ref_child.png")
-        if os.path.exists(master_ref_child) and child_photo_path:
-            print(f"Generating Master Character for CHILD...")
-            masters["child"] = generator_service.generate_master_character(
-                order_id=order_id,
-                user_photo_path=child_photo_path,
-                master_ref_path=master_ref_child,
-                role="child"
-            )
-        else:
-            print(f"Warning: Master reference for child not found at {master_ref_child}")
-            print("Falling back to first page reference for master...")
-            # Fallback: use first page reference as master ref
-            first_page = sorted([p for p in os.listdir(template_pages_dir) if p.startswith("p")])[0]
-            fallback_ref = os.path.join(template_pages_dir, first_page, "ref_child.png")
-            if os.path.exists(fallback_ref) and child_photo_path:
-                masters["child"] = generator_service.generate_master_character(
-                    order_id=order_id,
-                    user_photo_path=child_photo_path,
-                    master_ref_path=fallback_ref,
-                    role="child"
-                )
-        
-        # Generate Master for Mom
-        master_ref_mom = os.path.join(template_root, "master_ref_mom.png")
-        if os.path.exists(master_ref_mom) and mom_photo_path:
-            print(f"Generating Master Character for MOM...")
-            masters["mom"] = generator_service.generate_master_character(
-                order_id=order_id,
-                user_photo_path=mom_photo_path,
-                master_ref_path=master_ref_mom,
-                role="mom"
-            )
-        else:
-            print(f"Warning: Master reference for mom not found at {master_ref_mom}")
-            # Fallback: use first page reference
-            first_page = sorted([p for p in os.listdir(template_pages_dir) if p.startswith("p")])[0]
-            fallback_ref = os.path.join(template_pages_dir, first_page, "ref_mom.png")
-            if os.path.exists(fallback_ref) and mom_photo_path:
-                masters["mom"] = generator_service.generate_master_character(
-                    order_id=order_id,
-                    user_photo_path=mom_photo_path,
-                    master_ref_path=fallback_ref,
-                    role="mom"
-                )
-        
-        print(f"Masters Generated: {list(masters.keys())}")
-
-        # ============================================================
-        # PHASE 2: GENERATE PAGE CHARACTERS (Using Masters)
-        # ============================================================
-        print("\n" + "="*60)
-        print("PHASE 2: PAGE CHARACTER GENERATION")
-        print("="*60)
 
         pages = sorted([p for p in os.listdir(template_pages_dir) if p.startswith("p")])
-        
+        print(f"Found pages: {pages}")
+
         from app.db.models import OrderPage
         from app.core.config import settings
+
         results = []
 
         for page_folder in pages:
-            print(f"\nProcessing {page_folder}...")
             page_id = page_folder
-            page_dir = os.path.join(template_pages_dir, page_id)
-            
-            # Load Page Slots
-            slots_data = {}
+            page_num_str = page_id.replace("p", "") # p001 -> 001
             try:
-                with open(os.path.join(page_dir, "slot.json")) as f:
-                    slots_data = json.load(f)
+                page_num = int(page_num_str)
             except:
-                print(f"Warning: Could not read slot.json for {page_id}")
-                continue
-
-            # Generate Characters for this page using Masters
-            page_character_map = {}
-            
-            for slot in slots_data.get("slots", []):
-                role = slot.get("role")
+                page_num = 1 # Fallback
                 
-                # Check if we have a master for this role
-                if role in masters:
-                    page_ref_path = os.path.join(page_dir, f"ref_{role}.png")
-                    
-                    if os.path.exists(page_ref_path):
-                        print(f"Generating {role} for {page_id} using Master...")
-                        try:
-                            gen_path = generator_service.generate_page_character(
-                                order_id=order_id,
-                                master_path=masters[role],
-                                page_ref_path=page_ref_path,
-                                page_id=page_id,
-                                role=role
-                            )
-                            
-                            if gen_path:
-                                page_character_map[role] = gen_path
-                        except Exception as ge:
-                            print(f"Page Generation Failed for {role} on {page_id}: {ge}")
-                    else:
-                        print(f"No page reference found for {role} on {page_id}")
+            print(f"Processing {page_id}...")
             
             # Composite
-            if not page_character_map:
-                print(f"Skipping {page_id} - No characters generated.")
-                continue
-                
-            final_page_path = comp_service.composite_page(book_id, page_id, page_character_map)
+            # Note: create_identity / generate_character is SKIPPED for "Simple Mode"
+            final_page_path = comp_service.composite_page(book_id, page_id, character_map)
             
             if final_page_path:
                 # Save & Persist
@@ -443,7 +308,6 @@ def process_approach_b(self, order_id: str, photo_url: str, book_id: str = "book
                 results.append(page_url)
                 
                 # DB Update
-                page_num = int(page_id.replace("p", ""))
                 existing_page = db.query(OrderPage).filter(
                     OrderPage.order_id == order.id,
                     OrderPage.page_number == page_num
@@ -464,7 +328,7 @@ def process_approach_b(self, order_id: str, photo_url: str, book_id: str = "book
         order.status = OrderStatus.COMPLETED
         db.commit()
         
-        print(f"Approach B (Advanced Mode) Complete. Generated {len(results)} pages.")
+        print(f"Approach B (Simple Mode) Complete. Generated {len(results)} pages.")
         return "COMPLETED"
 
     except Exception as e:

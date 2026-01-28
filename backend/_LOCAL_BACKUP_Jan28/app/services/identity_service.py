@@ -57,12 +57,7 @@ class IdentityService:
         # 3. Attribute Extraction (Heuristic for now)
         # Load image again for processing (validator decoded it but didn't return it)
         img = insight_service._url_to_image(photo_url)
-        # Ensure app is initialized
-        app = insight_service.get_app() 
-        if not app:
-             raise RuntimeError("Failed to initialize InsightFace model")
-        
-        faces = app.get(img)
+        faces = insight_service.app.get(img)
         
         if not faces:
              raise ValueError("No faces detected during extraction")
@@ -76,57 +71,29 @@ class IdentityService:
         face = sorted_faces[face_index]
         print(f"Selected face index {face_index}: {int(face.bbox[2]-face.bbox[0])}x{int(face.bbox[3]-face.bbox[1])} px")
         
-        # --- Advanced Attribute Extraction ---
-        
-        # 1. Skin Tone (Hex)
+        # Simple Skin Tone Estimator
+        # Get center of face (nose area)
         bbox = face.bbox.astype(int)
         center_x = (bbox[0] + bbox[2]) // 2
         center_y = (bbox[1] + bbox[3]) // 2
         
-        # Sample center region for skin tone
+        # Sample small region
+        # Ensure bounds
         sample_img = img[max(0, center_y-5):min(img.shape[0], center_y+5), 
                          max(0, center_x-5):min(img.shape[1], center_x+5)]
-        avg_color = sample_img.mean(axis=0).mean(axis=0) if sample_img.size > 0 else np.array([200, 200, 200])
+        
+        # Average Color (BGR)
+        avg_color = sample_img.mean(axis=0).mean(axis=0)
         skin_tone_hex = "#{:02x}{:02x}{:02x}".format(int(avg_color[2]), int(avg_color[1]), int(avg_color[0]))
 
-        # 2. Embeddings (InsightFace 512-d)
-        embedding_list = []
-        if hasattr(face, 'embedding') and face.embedding is not None:
-            # Convert numpy float32 to standard float list
-            embedding_list = [float(x) for x in face.embedding]
-        
-        # 3. Hair Features (Heuristic)
-        # Strategy: Sample area just above the forehead
-        hair_color_hex = "#000000" # default
-        hair_texture = "straight" # default
-        
-        # Estimate forehead top
-        face_height = bbox[3] - bbox[1]
-        forehead_y = max(0, int(bbox[1] - face_height * 0.15))
-        # Take a strip above the bounding box
-        hair_sample = img[forehead_y:int(bbox[1]), int(bbox[0]):int(bbox[2])]
-        
-        if hair_sample.size > 0:
-            avg_hair = hair_sample.mean(axis=0).mean(axis=0)
-            hair_color_hex = "#{:02x}{:02x}{:02x}".format(int(avg_hair[2]), int(avg_hair[1]), int(avg_hair[0]))
-            # Texture is hard without clear ML, defaulting to "wavy" if sufficient variance, else "straight"
-            gray_hair = cv2.cvtColor(hair_sample, cv2.COLOR_BGR2GRAY)
-            variance = cv2.Laplacian(gray_hair, cv2.CV_64F).var()
-            if variance > 500:
-                hair_texture = "curly"
-            elif variance > 100:
-                hair_texture = "wavy"
-        
         attributes = {
              "skin_tone_hex": skin_tone_hex,
-             "hair_color_hex": hair_color_hex,
-             "hair_texture": hair_texture,
-             "age_group": role, 
-             "gender_detected": int(face.gender) if hasattr(face, 'gender') else None,
-             "embedding_available": bool(embedding_list)
+             "age_group": role, # Use role as proxy? Or infer from face age (face.age)
+             "gender_detected": int(face.gender) if hasattr(face, 'gender') else None
         }
 
         # 4. Save Face Crop (Identity Ref)
+        # Crop with some margin
         margin = 50
         x1 = max(0, bbox[0] - margin)
         y1 = max(0, bbox[1] - margin)
@@ -137,23 +104,14 @@ class IdentityService:
         face_ref_filename = f"face_ref_{role}.png"
         face_ref_path = os.path.join(identity_dir, face_ref_filename)
         cv2.imwrite(face_ref_path, face_crop)
-        
-        # Save embedding to a separate binary or JSON if too large? 
-        # For now, keeping it in identity.json for simplicity of transport to Generator
-        
+
         # 5. Create identity.json
         identity_data = {
              "order_id": order_id,
              "role": role,
              "source_images": [{"path": f"input/{filename}", "primary": True}],
              "attributes": attributes,
-             "identity_refs": {
-                 "face_crop": f"identity/{role}/{face_ref_filename}",
-                 "embedding": embedding_list 
-             },
-             "consistency": {
-                 "identity_strength": 0.85
-             }
+             "identity_refs": {"face_crop": f"identity/{role}/{face_ref_filename}"}
         }
 
         identity_json_path = os.path.join(identity_dir, "identity.json")
@@ -168,16 +126,15 @@ if __name__ == "__main__":
     assets_dir = os.path.join(os.getcwd(), "backend", "assets")
     service = IdentityService(assets_root="backend/assets")
     
-    # Use one of the sample images - ensure path is correct relative to execution
-    # This assumes running from monorepo root
-    original_child = "backend/assets/templates/book_sample/v1/pages/p001/ref_child.png"
+    # Use one of the sample images
+    sample_child = "backend/assets/templates/book_sample/v1/pages/p001/ref_child.png"
+    # Note: ref_child.png was made transparent/white-removed, so it might fail face detection 
+    # if the insightface model expects a full photo. 
+    # Better to use the original uploaded file if possible, or 4.png from sample Book
     
-    # Note: ref_child might be transparent. For a robust test, we ideally want a JPG.
-    # But let's try.
-    if os.path.exists(original_child):
-        try:
-            service.create_identity("ORD_TEST_ADV_001", original_child, "child")
-        except Exception as e:
-            print(f"Test Failed: {e}")
-    else:
-        print("Test Skipped: Sample image not found at expected path.")
+    original_child = "sample Book/4.png" # The one with white background is fine for detection usually
+    
+    try:
+        service.create_identity("ORD_TEST_001", original_child, "child")
+    except Exception as e:
+        print(f"Test Failed: {e}")

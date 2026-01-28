@@ -29,7 +29,7 @@ if not os.path.exists(UPLOAD_DIR):
     os.makedirs(UPLOAD_DIR)
 
 @router.post("/upload")
-async def upload_photo(file: UploadFile = File(...)):
+def upload_photo(file: UploadFile = File(...)):
     """
     Receives a photo, saves it locally, and validates it using Local Validator.
     """
@@ -46,28 +46,17 @@ async def upload_photo(file: UploadFile = File(...)):
         fake_url = Path(os.path.abspath(file_path)).as_uri()
                 
         # Run Validation
-        # Re-enabled for HF 16GB RAM
-        validation_result = validator.validate_photo(fake_url)
+        # SKIP VALIDATION for Memory Safety on Render Free Tier
+        # The AI model requires 300MB+ RAM which crashes the 512MB container during upload.
+        # validation_result = validator.validate_photo(fake_url)
         
-        if not validation_result["valid"]:
-             # Cleanup invalid file and return error
-             if os.path.exists(file_path):
-                 os.remove(file_path)
-             return {
-                 "url": "",
-                 "local_path": "",
-                 "valid": False,
-                 "reason": validation_result.get("reason", "Photo validation failed"),
-                 "checks": validation_result.get("checks", {})
-             }
-        
-        # Validation Passed
+        # Default Success Response
         return {
             "url": fake_url, 
             "local_path": file_path, 
-            "valid": True,
-            "reason": "Validation Passed",
-            "checks": validation_result.get("checks", {})
+            "valid": True, # Mock Success
+            "reason": "Validation skipped for performance",
+            "checks": {"skipped": True}
         }
     except Exception as e:
         print(f"Upload Endpoint Critical Error: {e}")

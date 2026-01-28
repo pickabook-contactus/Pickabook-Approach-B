@@ -14,23 +14,33 @@ if not token:
 api = HfApi(token=token)
 repo_id = "alipickabook/pickabook-backend"
 # Handle Windows paths correctly
-local_file = os.path.join("backend", "app", "services", "compositor", "engine.py")
-remote_path = "app/services/compositor/engine.py"
+# Handle Windows paths correctly
+# Deploying Infrastructure Updates
+files_to_deploy = [
+    {
+        "local": os.path.join("backend", "start_free_tier.sh"),
+        "remote": "start_free_tier.sh"
+    }
+]
 
-print(f"Uploading {local_file} to {repo_id}...")
+for item in files_to_deploy:
+    local_file = item["local"]
+    remote_path = item["remote"]
 
-if not os.path.exists(local_file):
-    print(f"❌ Error: File not found at {os.path.abspath(local_file)}")
-    exit(1)
+    print(f"Uploading {local_file} to {repo_id}...")
 
-try:
-    api.upload_file(
-        path_or_fileobj=local_file,
-        path_in_repo=remote_path,
-        repo_id=repo_id,
-        repo_type="space",
-        commit_message="Fix UnboundLocalError: Define slot coords before usage"
-    )
-    print("✅ Upload success!")
-except Exception as e:
-    print(f"❌ Upload failed: {e}")
+    if not os.path.exists(local_file):
+        print(f"❌ Error: File not found at {os.path.abspath(local_file)}")
+        continue
+
+    try:
+        api.upload_file(
+            path_or_fileobj=local_file,
+            path_in_repo=remote_path,
+            repo_id=repo_id,
+            repo_type="space",
+            commit_message="Enable Embedded Redis (Unlimited Quota)"
+        )
+        print(f"✅ Upload success for {remote_path}!")
+    except Exception as e:
+        print(f"❌ Upload failed for {remote_path}: {e}")
