@@ -89,7 +89,7 @@ export default function OrderStatusPage() {
                                 "Queuing your request..."}
                         </p>
                         <p className="text-xl font-mono text-blue-600 mt-4">{elapsedTime}s</p>
-                        <p className="text-xs text-slate-400 mt-1">This usually takes 10-20 seconds.</p>
+                        <p className="text-xs text-slate-400 mt-1">This takes about 4-5 minutes. Please don't close this tab.</p>
                     </div>
                 </div>
             </div>

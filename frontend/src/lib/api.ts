@@ -57,8 +57,22 @@ export interface Order {
   }[];
 }
 
+// Books (Dynamic)
+export interface Book {
+  id: string;
+  title: string;
+  cover_url: string;
+}
+
 // API Methods
 export const api = {
+  // Books
+  async getBooks(): Promise<Book[]> {
+    const response = await fetch(`${API_BASE}/api/v1/books/`);
+    if (!response.ok) throw new Error("Failed to fetch books");
+    return response.json();
+  },
+
   // Stories
   async getStories(): Promise<Story[]> {
     const response = await fetch(`${API_BASE}/api/v1/stories`);

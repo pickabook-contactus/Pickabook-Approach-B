@@ -25,13 +25,38 @@ from app.db.models import Base
 @app.on_event("startup")
 def on_startup():
     Base.metadata.create_all(bind=engine)
+    
+    # -------------------------------------------------------------
+    # PRELOAD AI MODELS
+    # -------------------------------------------------------------
+    print("--- [STARTUP] Preloading AI Models... ---")
+    try:
+        # 1. Preload REMBG (u2net)
+        print("[STARTUP] Loading REMBG (u2net)...")
+        from rembg import remove, new_session
+        import numpy as np
+        # Dummy inference to provoke download/cache
+        dummy_img = np.zeros((100, 100, 3), dtype=np.uint8)
+        remove(dummy_img) 
+        print("[STARTUP] REMBG Loaded.")
+        
+        # 2. Preload InsightFace (buffalo_s)
+        print("[STARTUP] Loading InsightFace (buffalo_s)...")
+        from app.services.ai.insight import get_app
+        get_app() # Trigger lazy load
+        print("[STARTUP] InsightFace Loaded.")
+        
+    except Exception as e:
+        print(f"[STARTUP] WARNING: Model preload failed: {e}")
+    print("--- [STARTUP] AI Models Ready. ---")
 
 
-from app.api.v1 import orders, stories, ai
+from app.api.v1 import orders, stories, ai, test
 
 app.include_router(orders.router, prefix="/api/v1/orders", tags=["orders"])
 app.include_router(stories.router, prefix="/api/v1/stories", tags=["stories"])
 app.include_router(ai.router, prefix="/api/v1/ai", tags=["AI Tooling"])
+app.include_router(test.router, prefix="/api/v1/test", tags=["test"])
 
 origins = [
     "http://localhost:3000",

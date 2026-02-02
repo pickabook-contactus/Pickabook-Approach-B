@@ -40,7 +40,7 @@ def validate_photo(photo_url: str) -> dict:
         
         # 3. Face Count Check
         print(f"Detecting faces in {photo_url}...")
-        faces = insight_service.app.get(img)
+        faces = model.get(img)
         face_count = len(faces)
         has_one_face = face_count == 1
         

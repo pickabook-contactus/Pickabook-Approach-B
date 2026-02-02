@@ -25,6 +25,9 @@ uploads/
 backend/uploads/
 backend/assets/orders/
 backend/assets/models/
+backend/assets/templates/
+!backend/assets/templates/**/prompts.json
+!backend/assets/templates/**/cover.png
 *.log
 backend_logs.txt
 worker_logs.txt

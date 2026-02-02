@@ -46,17 +46,16 @@ def upload_photo(file: UploadFile = File(...)):
         fake_url = Path(os.path.abspath(file_path)).as_uri()
                 
         # Run Validation
-        # SKIP VALIDATION for Memory Safety on Render Free Tier
-        # The AI model requires 300MB+ RAM which crashes the 512MB container during upload.
-        # validation_result = validator.validate_photo(fake_url)
+        # Enabled for HuggingFace Spaces
+        validation_result = validator.validate_photo(fake_url)
         
         # Default Success Response
         return {
             "url": fake_url, 
             "local_path": file_path, 
-            "valid": True, # Mock Success
-            "reason": "Validation skipped for performance",
-            "checks": {"skipped": True}
+            "valid": validation_result["valid"],
+            "reason": validation_result.get("reason", ""),
+            "checks": validation_result.get("checks", {})
         }
     except Exception as e:
         print(f"Upload Endpoint Critical Error: {e}")
@@ -109,7 +108,10 @@ def create_order(order_in: OrderCreate, db: Session = Depends(get_db)):
     # Let's assume order_in.story_id contains the key like "book_sample" if provided, 
     # or if it's a UUID, the task needs to look it up.
     # Given the task.py logic: book_id="book_sample" default.
-    target_book_id = "magic_of_money" 
+    # Dynamic Book ID
+    # We use story_id as the folder name (book_id)
+    target_book_id = order_in.story_id if order_in.story_id else "magic_of_money"
+    print(f"Creating Order for Book: {target_book_id}") 
     
     # Pass Mom photo URL to task as well
     # We might need to update task signature to accept kwargs or expanded args

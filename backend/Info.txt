@@ -1,0 +1,112 @@
+# Pickaboo Backend: Codebase Documentation / Info
+
+This document provides a detailed breakdown of the backend architecture, services, and file responsibilities for "Approach B" (The Async/Queue-based Architecture).
+
+## 1. Project Root & Entry Point
+**Path:** `backend/`
+
+*   **`app/main.py`**:
+    *   **Role**: The Application Entry Point (FastAPI).
+    *   **Function**: Initializes the web server, sets up CORS (Cross-Origin Resource Sharing) to allow frontend connections, and mounts the API routes.
+    *   **Key Components**: `FastAPI()` app definition, Middleware setup, `include_router` calls to register API endpoints.
+
+*   **`push_to_hf.py`**:
+    *   **Role**: Deployment Script.
+    *   **Function**: Automates the process of uploading the entire backend folder to the Hugging Face Space (`alipickabook/pickabook-backend`).
+
+*   **`start_free_tier.sh`**:
+    *   **Role**: Startup Script.
+    *   **Function**: Bootstraps the application on Linux environments (like Hugging Face), starting both the Redis server and the Celery worker before launching the web app.
+
+---
+
+## 2. AI Services Layer
+**Path:** `app/services/ai/`
+
+*   **`replicate.py`**:
+    *   **Role**: The Interface to Generative AI (Google Gemini via Replicate).
+    *   **Function**: Sends image generation requests to the Replicate API using the `google/gemini-2.5-flash-image` model.
+    *   **Key Logic**:
+        *   `generate_character_variant()`: Takes Identity + Reference images and prompts Gemini to create the stylized character.
+        *   Passes images as `[Identity, Reference]` list.
+        *   Handles error logging and API token management.
+
+*   **`insight.py`**:
+    *   **Role**: Face Analysis & Detection.
+    *   **Function**: Uses the `InsightFace` library to detect faces in uploaded user photos.
+    *   **Key Logic**:
+        *   `FaceAnalysis(name='buffalo_s')`: Loads the lightweight face detection model.
+        *   `get_app()`: Lazy-loads the model to prevent startup crashes.
+        *   Verifies if an uploaded photo has a valid face to use as a Master Identity.
+
+---
+
+## 3. Core Logic & Orchestration
+**Path:** `app/services/`
+
+*   **`generator_service.py`**:
+    *   **Role**: The "Brain" of the operation.
+    *   **Function**: Orchestrates the multi-step generation process.
+    *   **Key Logic**:
+        *   **Prompts**: Contains the master prompts (`MASTER_CHARACTER_PROMPT` and `PAGE_CHARACTER_PROMPT`) that instruct the AI.
+        *   `generate_master_character()`: Creates the initial "Cartoon Version" of the user.
+        *   `generate_page()`: Creates the specific scene characters by fusing the Master Identity into the Page Template.
+
+*   **`identity_service.py`**:
+    *   **Role**: Identity Management.
+    *   **Function**: Likely handles the storage and retrieval of user identities and possibly embedding calculations (if face verification is strictly enforced).
+
+*   **`compositor/engine.py`**:
+    *   **Role**: The Scene Assembler.
+    *   **Function**: Takes the AI-generated characters and "Pastes" them onto the final page background.
+    *   **Key Logic**:
+        *   Reads `slot.json` for coordinates (`x, y, w, h`).
+        *   Layering (`z_index`): Ensures the child appears in front of the mom (or vice versa) as defined.
+        *   Resizes character images to fit the defined bounding boxes and composites them.
+
+---
+
+## 4. Async Worker System
+**Path:** `app/worker/`
+
+*   **`tasks.py`**:
+    *   **Role**: The Background Worker.
+    *   **Function**: Executes long-running tasks asynchronously so the API doesn't freeze.
+    *   **Key Logic**:
+        *   `process_approach_b`: The main workflow function.
+        *   Steps:
+            1.  Receives Order ID.
+            2.  Calls `generate_master_character`.
+            3.  Iterates through pages (p001, p002...).
+            4.  Calls `generate_page` for each character.
+            5.  Calls `compositor` to stitch the final page.
+            6.  Updates status/progress.
+
+*   **`celery_app.py`**:
+    *   **Role**: Queue Configuration.
+    *   **Function**: Configures Celery to use Redis as the message broker.
+
+---
+
+## 5. Utilities & Processing
+**Path:** `app/utils/`
+
+*   **`image_processing.py`**:
+    *   **Role**: Image Manipulation Tool.
+    *   **Function**: Cleans up raw AI outputs.
+    *   **Key Logic**:
+        *   `remove_background()`: Uses `rembg` to remove the white background from Gemini outputs, creating transparent PNGs.
+        *   `process_character_output()`: Filters noise (contours) to ensure only the main character is kept.
+
+---
+
+## 6. Assets & Configuration
+**Path:** `assets/templates/` & `app/core/`
+
+*   **`slots.json`** (in `assets/.../pages/`):
+    *   **Role**: Layout Definitions.
+    *   **Function**: JSON files defining exactly where characters sit on the page (`bbox_px`), their layer order (`z_index`), and role names.
+
+*   **`app/core/config.py`**:
+    *   **Role**: Environment Settings.
+    *   **Function**: Loads API Keys (`REPLICATE_API_TOKEN`), Database URLs, and other secrets from `.env` or system environment variables.

@@ -365,3 +365,94 @@ def refine_face_region(crop_path: str, source_face_url: str, prompt_suffix: str)
     finally:
         if opened_crop: opened_crop.close()
         if opened_source: opened_source.close()
+
+def generate_character_variant(
+    reference_image_path: str,
+    identity_image_path: str,
+    prompt: str,
+    style_strength: float = 0.9,
+    negative_prompt: str = ""
+) -> str:
+    """
+    Generates a character variant using Google Gemini (via Replicate).
+    - Passes [Identity, Reference] as separate images.
+    - Prompt references them as Image 1 and Image 2.
+    """
+    import requests
+    
+    print(f"Generating Variant (Gemini). Ref={reference_image_path}, Identity={identity_image_path}")
+    
+    opened_files = []
+    
+    try:
+        if not settings.REPLICATE_API_TOKEN:
+             raise ValueError("REPLICATE_API_TOKEN is not set")
+        
+        client = replicate.Client(api_token=settings.REPLICATE_API_TOKEN)
+        
+        # 1. Prepare Images as List [Image 1 (Identity), Image 2 (Reference)]
+        # This matches the Prompt which says "Use Image 1 as Identity... Use Image 2 as Reference"
+        
+        # Identity (Image 1)
+        id_path_clean = identity_image_path
+        if isinstance(identity_image_path, str) and identity_image_path.startswith("file://"):
+            id_path_clean = identity_image_path.replace("file://", "")
+        
+        f1 = open(id_path_clean, "rb")
+        opened_files.append(f1)
+        
+        # Reference (Image 2)
+        f2 = open(reference_image_path, "rb")
+        opened_files.append(f2)
+        
+        images_list = [f1, f2]
+        
+        # Model ID - Dynamic Lookup based on User Specs
+        # User confirmed: "google/gemini-2.5-flash-image"
+        # Input Key: "image_input" (Array)
+        model_name = "google/gemini-2.5-flash-image"
+        
+        full_model_id = model_name # Default
+        try:
+            model = client.models.get(model_name)
+            version = model.latest_version
+            full_model_id = f"{model_name}:{version.id}"
+            print(f"Resolved Model Version: {full_model_id}")
+        except Exception as e:
+            print(f"Failed to resolve version for {model_name}: {e}")
+            full_model_id = model_name
+        
+        print(f"--- [GEMINI] Generating Variant ---")
+        print(f"Model: {full_model_id}")
+        print(f"Input Count: {len(images_list)}")
+        print(f"Prompt (First 200 chars): {prompt[:200]}...")
+        print(f"Prompt (Last 200 chars): ...{prompt[-200:]}")
+        
+        output = client.run(
+            full_model_id,
+            input={
+                "image_input": images_list, # Key is 'image_input' per user docs
+                "prompt": prompt, # Pass prompt DIRECTLY
+                "safety_settings": "BLOCK_NONE" 
+            }
+        )
+        
+        if isinstance(output, list) and len(output) > 0:
+            return str(output[0])
+        elif isinstance(output, str):
+            return output
+            
+        return str(output)
+        
+    except Exception as e:
+        print(f"Generate Variant (Gemini) Error: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
+        
+    finally:
+        for f in opened_files:
+            try: f.close()
+            except: pass
+
+

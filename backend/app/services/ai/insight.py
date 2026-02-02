@@ -82,8 +82,8 @@ def verify_identity(original_url: str, generated_url: str) -> float:
             return 0.0
 
         # Detect faces
-        faces_source = app.get(source_img)
-        faces_gen = app.get(gen_img)
+        faces_source = model.get(source_img)
+        faces_gen = model.get(gen_img)
 
         # We need exactly 1 face in each for strict comparison
         if len(faces_source) == 0 or len(faces_gen) == 0:

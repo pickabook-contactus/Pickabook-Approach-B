@@ -1,22 +1,33 @@
 "use client";
 
-import React, { useState, Suspense } from 'react';
+import React, { useState, Suspense, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import UploadZone from '@/components/UploadZone';
-import { api } from '@/lib/api';
-import { Loader2, BookOpen, Star, UserPlus } from 'lucide-react';
+import { api, Book } from '@/lib/api';
+import { Loader2, BookOpen, UserPlus } from 'lucide-react';
 
 function CreatePageContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
 
-    // Default to 'magic_of_money' if not specified, but keep legacy support
-    const [selectedBook, setSelectedBook] = useState<string>('magic_of_money');
+    // Dynamic Books
+    const [books, setBooks] = useState<Book[]>([]);
+    const [selectedBook, setSelectedBook] = useState<string>(''); // No default initially
+
+    // Fetch Books
+    useEffect(() => {
+        api.getBooks().then(data => {
+            setBooks(data);
+            if (data.length > 0) setSelectedBook(data[0].id);
+        }).catch(err => console.error(err));
+    }, []);
 
     const [childName, setChildName] = useState('');
     const [childPhotoUrl, setChildPhotoUrl] = useState<string | null>(null);
 
-    // Secondary Character (Mom)
+    // Secondary Character (Mom) - Logic: If book matches specific ID or Metadata (hardcoded for now)
+    // Actually, backend needs to tell us if Mom photo involves. 
+    // For now, let's assume 'magic_of_money' requires Mom.
     const [momName, setMomName] = useState('');
     const [momPhotoUrl, setMomPhotoUrl] = useState<string | null>(null);
 
@@ -58,26 +69,24 @@ function CreatePageContent() {
                     <p className="text-slate-500 mt-2">Bring your family into the world of books.</p>
                 </div>
 
-                {/* Book Selector */}
+                {/* Book Selector (Dynamic) */}
                 <div className="grid grid-cols-2 gap-4 mb-8">
-                    <button
-                        type="button"
-                        onClick={() => setSelectedBook('magic_of_money')}
-                        className={`p-4 rounded-xl border-2 transition-all ${selectedBook === 'magic_of_money' ? 'border-blue-500 bg-blue-50' : 'border-slate-200 hover:border-slate-300'}`}
-                    >
-                        <UserPlus className={`w-8 h-8 mb-2 ${selectedBook === 'magic_of_money' ? 'text-blue-500' : 'text-slate-400'}`} />
-                        <h3 className="font-semibold text-slate-900">Magic of Money</h3>
-                        <p className="text-xs text-slate-500">For Kid & Mom</p>
-                    </button>
-                    <button
-                        type="button"
-                        onClick={() => setSelectedBook('book_sample')} // Maps to Space Adventure logic
-                        className={`p-4 rounded-xl border-2 transition-all ${selectedBook === 'book_sample' ? 'border-blue-500 bg-blue-50' : 'border-slate-200 hover:border-slate-300'}`}
-                    >
-                        <Star className={`w-8 h-8 mb-2 ${selectedBook === 'book_sample' ? 'text-blue-500' : 'text-slate-400'}`} />
-                        <h3 className="font-semibold text-slate-900">Space Adventure</h3>
-                        <p className="text-xs text-slate-500">For Kid Only</p>
-                    </button>
+                    {books.length === 0 ? (
+                        <div className="col-span-2 text-center text-slate-400 py-4">Loading Library...</div>
+                    ) : (
+                        books.map((book) => (
+                            <button
+                                key={book.id}
+                                type="button"
+                                onClick={() => setSelectedBook(book.id)}
+                                className={`p-4 rounded-xl border-2 transition-all ${selectedBook === book.id ? 'border-blue-500 bg-blue-50' : 'border-slate-200 hover:border-slate-300'}`}
+                            >
+                                <BookOpen className={`w-8 h-8 mb-2 ${selectedBook === book.id ? 'text-blue-500' : 'text-slate-400'}`} />
+                                <h3 className="font-semibold text-slate-900">{book.title}</h3>
+                                {book.id === 'magic_of_money' && <p className="text-xs text-slate-500">For Kid & Mom</p>}
+                            </button>
+                        ))
+                    )}
                 </div>
 
                 <form onSubmit={handleSubmit} className="space-y-8">

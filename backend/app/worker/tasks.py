@@ -4,6 +4,222 @@ from app.services.compositor import engine
 from app.db.session import SessionLocal
 from app.db.models import Order, OrderStatus, Story
 from app.schemas.book import BookConfig
+from app.services.storage.supabase_service import SupabaseService
+import time
+import os
+import json
+import shutil
+from app.core.config import settings
+
+# ... (Previous process_order_v2 code remains unchanged briefly, or we focus on approach_b)
+
+@celery_app.task(bind=True, max_retries=0)
+def process_approach_b(self, order_id: str, photo_url: str, book_id: str = "book_sample"):
+    """
+    Approach B: "Simple Mode" for Magic of Money.
+    Now with Supabase Storage and Dynamic Prompts.
+    """
+    print(f"Starting Approach B (Simple Mode) for Order {order_id} (Book: {book_id})...")
+    db = SessionLocal()
+    order = db.query(Order).get(order_id)
+    if not order:
+        return "ORDER_NOT_FOUND"
+
+    try:
+        # Config
+        assets_root = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "assets")
+        comp_service = engine.CompositorEngine(assets_root)
+        supabase = SupabaseService()
+        
+        # 1. Prepare User Assets (Remove BG)
+        def resolve_local_path(url_str):
+            if not url_str: return None
+            if url_str.startswith("file://"):
+                from urllib.parse import unquote
+                path = unquote(url_str[7:])
+                if os.name == 'nt' and path.startswith('/'):
+                     path = path[1:]
+                return path
+            return url_str
+
+        child_raw_path = resolve_local_path(order.photo_url)
+        mom_raw_path = resolve_local_path(order.mom_photo_url)
+        
+        print(f"Resolving Paths:\nChild: {order.photo_url} -> {child_raw_path}\nMom: {order.mom_photo_url} -> {mom_raw_path}")
+        
+        character_map = {}
+        if child_raw_path and os.path.exists(child_raw_path):
+            character_map["child"] = child_raw_path
+        else:
+             print(f"WARNING: Child path does not exist: {child_raw_path}")
+
+        if mom_raw_path and os.path.exists(mom_raw_path):
+             character_map["mom"] = mom_raw_path
+        else:
+             print(f"WARNING: Mom path does not exist: {mom_raw_path}")
+             
+        # 2. Iterate Pages
+        template_pages_dir = os.path.join(assets_root, "templates", book_id, "v1", "pages")
+        if not os.path.exists(template_pages_dir):
+            print(f"Template dir not found: {template_pages_dir}")
+            raise FileNotFoundError(f"Template directory not found for {book_id}")
+
+        pages = sorted([p for p in os.listdir(template_pages_dir) if p.startswith("p")])
+        print(f"Found pages: {pages}")
+
+        from app.db.models import OrderPage
+
+        results = []
+        
+        # Initialize Generation Service
+        gen_service = GeneratorService(assets_root)
+
+        for page_folder in pages:
+            page_id = page_folder
+            page_num_str = page_id.replace("p", "") # p001 -> 001
+            try:
+                page_num = int(page_num_str)
+            except:
+                page_num = 1 # Fallback
+                
+            # -------------------------------------------------------------
+            # NEW MASTER CHARACTER PIPELINE (Two-Phase) - OPTIMIZED
+            # -------------------------------------------------------------
+            
+            # Phase 1: Generate Master Characters (ONCE per order)
+            # Store in master_map = {role: path}
+            master_map = {}
+            
+            print("Phase 1: Generating Master Characters...")
+            v1_dir = os.path.join(assets_root, "templates", book_id, "v1")
+            
+            for role in list(character_map.keys()): # Iterate all roles (child, mom)
+                user_photo_path = character_map[role]
+                print(f"Generating Master for {role}...")
+                
+                # Robust Ref Lookup
+                path_a = os.path.join(v1_dir, f"ref_master_{role}.png")
+                path_b = os.path.join(v1_dir, f"master_ref_{role}.png")
+                
+                master_ref_path = None
+                if os.path.exists(path_a): master_ref_path = path_a
+                elif os.path.exists(path_b): master_ref_path = path_b
+                
+                if not master_ref_path:
+                    print(f"Warning: Master Ref not found for {role}. Using User Photo/None.")
+                
+                # Generate
+                master_path = gen_service.generate_master_character(
+                    order_id=str(order.id),
+                    user_photo_path=user_photo_path,
+                    master_ref_path=master_ref_path,
+                    role=role,
+                    book_id=book_id # Passing Dynamic Book ID
+                )
+                
+                if master_path:
+                    master_map[role] = master_path
+                    print(f"Master {role} Saved: {master_path}")
+                else:
+                    print(f"Master Generation Failed for {role}")
+            
+            # -------------------------------------------------------------
+            
+            print(f"Processing {page_id}...")
+            
+            # Phase 2: Page Specific Generation
+            current_map = character_map.copy()
+            page_ref_dir = os.path.join(template_pages_dir, page_id)
+            
+            for role in list(master_map.keys()): # Only iterate roles that HAVE a master
+                master_path = master_map[role]
+                
+                # Look for Page Ref: ref_{role}.png
+                page_ref = os.path.join(page_ref_dir, f"ref_{role}.png")
+                
+                gen_page_path = None
+                if os.path.exists(page_ref):
+                    print(f"Phase 2: Generating Page Asset for {page_id} ({role})...")
+                    gen_page_path = gen_service.generate_page_character(
+                        order_id=str(order.id),
+                        master_path=master_path,
+                        page_ref_path=page_ref,
+                        page_id=page_id,
+                        role=role,
+                        book_id=book_id # Passing Dynamic Book ID
+                    )
+                else:
+                    print(f"Page Ref Missing for {role} on {page_id}. Skipping Gen.")
+
+                # UPDATE MAP
+                if gen_page_path:
+                    current_map[role] = gen_page_path # Best: Page Gen
+                else:
+                    print(f"Fallback: Using Master Character for {role} on {page_id}")
+                    current_map[role] = master_path # Fallback: Master
+            
+            # Composite using the updated map
+            final_page_path = comp_service.composite_page(book_id, page_id, current_map)
+            
+            if final_page_path:
+                # Save & Persist
+                uploads_dir = os.path.join(os.getcwd(), "uploads", "pages")
+                os.makedirs(uploads_dir, exist_ok=True)
+                
+                filename = f"order_{order.id}_{page_id}.png"
+                public_path = os.path.join(uploads_dir, filename)
+                shutil.copy2(final_page_path, public_path)
+                
+                # Supabase Upload (FINAL PAGE)
+                supabase_url = None
+                if supabase:
+                    supabase_url = supabase.upload_file(public_path, f"orders/{order.id}/pages/{filename}")
+                    print(f"Final Page Uploaded to Supabase: {supabase_url}")
+
+                # Calculate Final URL (Prefer Supabase, else Local)
+                page_url = supabase_url if supabase_url else f"{settings.BASE_URL}/uploads/pages/{filename}"
+                
+                results.append(page_url)
+                
+                # DB Update
+                existing_page = db.query(OrderPage).filter(
+                    OrderPage.order_id == order.id,
+                    OrderPage.page_number == page_num
+                ).first()
+
+                if existing_page:
+                    existing_page.image_url = page_url
+                else:
+                    db_page = OrderPage(
+                        order_id=order.id,
+                        page_number=page_num,
+                        image_url=page_url
+                    )
+                    db.add(db_page)
+                db.commit()
+        
+        # Mark Complete
+        order.status = OrderStatus.COMPLETED
+        db.commit()
+        
+        print(f"Approach B (Simple Mode) Complete. Generated {len(results)} pages.")
+        return "COMPLETED"
+
+    except Exception as e:
+        print(f"Approach B Failed: {e}")
+        import traceback
+        traceback.print_exc()
+        order.status = OrderStatus.FAILED
+        order.failure_reason = str(e)
+        db.commit()
+        return "FAILED"
+    finally:
+        db.close()
+from app.services.ai import validator, replicate, insight, inpainting
+from app.services.compositor import engine
+from app.db.session import SessionLocal
+from app.db.models import Order, OrderStatus, Story
+from app.schemas.book import BookConfig
 import time
 import os
 import json
@@ -233,18 +449,20 @@ def process_approach_b(self, order_id: str, photo_url: str, book_id: str = "book
         
         # 1. Prepare User Assets (Remove BG)
         # We need to handle File URLs or HTTP URLs (if using S3 later)
+        # -------------------------------------------------------------
+        # 1. Prepare User Assets (Remove BG + Clean)
+        # -------------------------------------------------------------
         def resolve_local_path(url_str):
             if not url_str: return None
             # Handle standard file:// URI
-            if url_str.startswith("file:///"):
+            if url_str.startswith("file://"):
                 from urllib.parse import unquote
-                # Strip file:/// (8 chars)
-                path = unquote(url_str[8:])
-                # On Windows, path is now "C:/..." or "e:/..." which is valid.
-                return path
-            elif url_str.startswith("file://"): # Just 2 slashes? Unusual but possible
-                from urllib.parse import unquote
+                # Strip scheme (7 chars) -> leaves /absolute/path
                 path = unquote(url_str[7:])
+                
+                # Windows Check: /C:/path -> C:/path
+                if os.name == 'nt' and path.startswith('/'):
+                     path = path[1:]
                 return path
             return url_str
 
@@ -253,18 +471,20 @@ def process_approach_b(self, order_id: str, photo_url: str, book_id: str = "book
         
         print(f"Resolving Paths:\nChild: {order.photo_url} -> {child_raw_path}\nMom: {order.mom_photo_url} -> {mom_raw_path}")
         
+        
         character_map = {}
+        # Reverted: Use Raw Paths as per user request (User wants AI to see original context)
         if child_raw_path:
             if os.path.exists(child_raw_path):
                 character_map["child"] = child_raw_path
             else:
-                print(f"WARNING: Child path does not exist: {child_raw_path}")
+                 print(f"WARNING: Child path does not exist: {child_raw_path}")
 
         if mom_raw_path:
-             if os.path.exists(mom_raw_path):
-                character_map["mom"] = mom_raw_path
-             else:
-                print(f"WARNING: Mom path does not exist: {mom_raw_path}")
+            if os.path.exists(mom_raw_path):
+                 character_map["mom"] = mom_raw_path
+            else:
+                 print(f"WARNING: Mom path does not exist: {mom_raw_path}")
              
         # 2. Iterate Pages
         # Find all pages in: backend/assets/templates/{book_id}/v1/pages/
@@ -289,11 +509,88 @@ def process_approach_b(self, order_id: str, photo_url: str, book_id: str = "book
             except:
                 page_num = 1 # Fallback
                 
+            # -------------------------------------------------------------
+            # NEW MASTER CHARACTER PIPELINE (Two-Phase) - OPTIMIZED
+            # -------------------------------------------------------------
+            gen_service = GeneratorService(assets_root)
+            
+            # Phase 1: Generate Master Characters (ONCE per order)
+            # Store in master_map = {role: path}
+            master_map = {}
+            
+            print("Phase 1: Generating Master Characters...")
+            v1_dir = os.path.join(assets_root, "templates", book_id, "v1")
+            
+            for role in list(character_map.keys()): # Iterate all roles (child, mom)
+                user_photo_path = character_map[role]
+                print(f"Generating Master for {role}...")
+                
+                # Robust Ref Lookup
+                path_a = os.path.join(v1_dir, f"ref_master_{role}.png")
+                path_b = os.path.join(v1_dir, f"master_ref_{role}.png")
+                
+                master_ref_path = None
+                if os.path.exists(path_a): master_ref_path = path_a
+                elif os.path.exists(path_b): master_ref_path = path_b
+                
+                if not master_ref_path:
+                    print(f"Warning: Master Ref not found for {role}. Using User Photo/None.")
+                
+                # Generate
+                master_path = gen_service.generate_master_character(
+                    order_id=str(order.id),
+                    user_photo_path=user_photo_path,
+                    master_ref_path=master_ref_path,
+                    role=role
+                )
+                
+                if master_path:
+                    master_map[role] = master_path
+                    print(f"Master {role} Saved: {master_path}")
+                else:
+                    print(f"Master Generation Failed for {role}")
+            
+            # -------------------------------------------------------------
+            
             print(f"Processing {page_id}...")
             
-            # Composite
-            # Note: create_identity / generate_character is SKIPPED for "Simple Mode"
-            final_page_path = comp_service.composite_page(book_id, page_id, character_map)
+            # Phase 2: Page Specific Generation
+            # Create a page-specific map copying the raw map
+            current_map = character_map.copy()
+            
+            # Iterate roles to generate page variations
+            page_ref_dir = os.path.join(template_pages_dir, page_id)
+            
+            for role in list(master_map.keys()): # Only iterate roles that HAVE a master
+                master_path = master_map[role]
+                
+                # Look for Page Ref: ref_{role}.png
+                page_ref = os.path.join(page_ref_dir, f"ref_{role}.png")
+                
+                gen_page_path = None
+                if os.path.exists(page_ref):
+                    print(f"Phase 2: Generating Page Asset for {page_id} ({role})...")
+                    gen_page_path = gen_service.generate_page_character(
+                        order_id=str(order.id),
+                        master_path=master_path,
+                        page_ref_path=page_ref,
+                        page_id=page_id,
+                        role=role
+                    )
+                else:
+                    print(f"Page Ref Missing for {role} on {page_id}. Skipping Gen.")
+
+                # UPDATE MAP
+                if gen_page_path:
+                    current_map[role] = gen_page_path # Best: Page Gen
+                else:
+                    print(f"Fallback: Using Master Character for {role} on {page_id}")
+                    current_map[role] = master_path # Fallback: Master
+            
+            # Composite using the updated map (Raw -> Master -> PageGen)
+            
+            # Composite using the (potentially new) map
+            final_page_path = comp_service.composite_page(book_id, page_id, current_map)
             
             if final_page_path:
                 # Save & Persist
