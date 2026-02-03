@@ -9,6 +9,7 @@ class SupabaseService:
         key = os.environ.get("SUPABASE_KEY")
         if not url or not key:
             print("WARNING: Supabase URL or Key not found in env.")
+            self.supabase = None
         else:
             self.supabase: Client = create_client(url, key)
 
@@ -21,6 +22,10 @@ class SupabaseService:
             return None
 
         try:
+            if not getattr(self, "supabase", None):
+                print("[Supabase] Skipped: Client not initialized.")
+                return None
+
             # Detect MIME type
             mime_type, _ = mimetypes.guess_type(file_path)
             if not mime_type:
