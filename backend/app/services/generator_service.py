@@ -163,7 +163,7 @@ class GeneratorService:
                              master_path: str,
                              page_ref_path: str,
                              page_id: str,
-                             page_id: str,
+
                              role: str = "child",
                              book_id: str = "book_sample") -> str:
         """
