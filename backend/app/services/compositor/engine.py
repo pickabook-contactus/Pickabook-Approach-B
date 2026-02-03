@@ -146,15 +146,36 @@ class CompositorEngine:
                     # Given checking 'magic_of_money' slots are quite specific, let's try to filling it
                     # but respecting the alpha.
                     
-                    # Current Strategy: Exact Resize (Match Slot)
-                    # This assumes slot.json w/h matches the aspect ratio of the pose.
-                    print(f"Placing {role} at ({target_x}, {target_y}) size {target_w}x{target_h}")
+                    # 2. Resize Generated Character to Fit Slot (ASPECT RATIO PRESERVED)
+                    # ==================================================================
+                    # Old Logic: Stretched to fill target_w, target_h (Caused Distortion)
+                    # New Logic: Scale to fit inside, Align Bottom Center.
+
+                    # Calculate Scale Factor to fit WITHIN the slot
+                    scale_w = target_w / char_img.width
+                    scale_h = target_h / char_img.height
+                    scale = min(scale_w, scale_h) # Fit inside the box (don't crop, don't stretch)
                     
-                    resized_char = char_img.resize((target_w, target_h), Image.Resampling.LANCZOS)
+                    new_w = int(char_img.width * scale)
+                    new_h = int(char_img.height * scale)
                     
-                    # 3. Paste
+                    print(f"Placing {role} (Original: {char_img.size}) -> Resized: {new_w}x{new_h} (Slot: {target_w}x{target_h})")
+                    resized_char = char_img.resize((new_w, new_h), Image.Resampling.LANCZOS)
+                    
+                    # 3. Calculate Position (Bottom Alignment)
+                    # ========================================
+                    # Center Horizontally in Slot
+                    x_offset = (target_w - new_w) // 2
+                    final_x = int(target_x + x_offset)
+                    
+                    # Align Bottom in Slot (Feet on Floor)
+                    # If the slot represents the "Standing Area", the bottom is the floor.
+                    y_offset = target_h - new_h
+                    final_y = int(target_y + y_offset)
+                    
+                    # 4. Paste
                     # Use the character's own alpha channel as mask
-                    bg_image.alpha_composite(resized_char, (int(target_x), int(target_y)))
+                    bg_image.alpha_composite(resized_char, (final_x, final_y))
 
             # 5. Save Output
             output_dir = os.path.join(self.assets_root, "orders", "debug_renders")
