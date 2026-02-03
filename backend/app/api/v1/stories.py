@@ -183,71 +183,80 @@ def convert_path_to_url(path: str) -> str:
 @router.post("/seed")
 def seed_stories(db: Session = Depends(get_db)):
     """
-    Development helper to seed demo stories.
-    Creates 'The Space Adventure' with 3 sample pages.
+    Seeds the database with stories corresponding to the available file templates.
     """
-    # Check if already seeded
-    existing = db.query(Story).filter(Story.title == "The Space Adventure").first()
-    space_story_id = None
-    
-    if existing:
-        space_story_id = existing.id
-        print("Story already exists. Checking for updates...")
-        # Force update cover image in case BASE_URL changed (e.g. localhost -> render)
-        existing.cover_image_url = "https://via.placeholder.com/400x600?text=Space+Adventure"
-        db.commit()
-    else:
-        # Create The Space Adventure
-        space_story = Story(
-            title="The Space Adventure",
-            description="Join Captain [Child Name] on an epic journey through the cosmos! Explore mysterious planets, meet friendly aliens, and save the galaxy.",
-            cover_image_url="https://via.placeholder.com/400x600?text=Space+Adventure",
-            price=19.99
-        )
-        db.add(space_story)
-        db.flush()
-        space_story_id = space_story.id
-        
-    # UPSERT ALL PAGES (1-4) using the "Child Can Be" template for consistency
-    custom_url = f"{settings.BASE_URL}/static/templates/child_can_be.png"
-    
-    # Define all 4 pages with identical settings (for now)
-    target_pages = [
-        {"num": 1, "url": custom_url, "x": 380, "y": 125, "w": 385, "a": 0.0},
-        {"num": 2, "url": custom_url, "x": 380, "y": 125, "w": 385, "a": 0.0},
-        {"num": 3, "url": custom_url, "x": 380, "y": 125, "w": 385, "a": 0.0},
-        {"num": 4, "url": custom_url, "x": 380, "y": 125, "w": 385, "a": 0.0},
+    # Define the templates we want to represent in the DB
+    # Mapping Folder Name (Template ID) -> DB Story Details
+    templates_to_seed = [
+        {
+            "id": "magic_of_money",
+            "title": "The Magic of Money",
+            "description": "A wonderful journey teaching the value of money. (Includes Mom & Child)",
+            "cover_url": f"{settings.BASE_URL}/static/templates/magic_of_money/cover.png",
+            "price": 24.99
+        },
+        {
+            "id": "mother_and_kid",
+            "title": "Mother and Kid",
+            "description": "A heartwarming tale of love and bonding.",
+            "cover_url": f"{settings.BASE_URL}/static/templates/mother_and_kid/cover.png",
+            "price": 24.99
+        },
+        {
+            "id": "book_sample",
+            "title": "Book Sample",
+            "description": "A simple demo book to test the generation pipeline.",
+            "cover_url": f"{settings.BASE_URL}/static/templates/book_sample/cover.png",
+            "price": 19.99
+        }
     ]
 
-    for p_data in target_pages:
-        page = db.query(StoryPage).filter(
-            StoryPage.story_id == space_story_id,
-            StoryPage.page_number == p_data["num"]
-        ).first()
+    results = []
+
+    for tmpl in templates_to_seed:
+        # Check if exists by title
+        existing = db.query(Story).filter(Story.title == tmpl["title"]).first()
+        story_id = None
         
-        if not page:
-            print(f"Creating Page {p_data['num']}...")
-            new_page = StoryPage(
-                story_id=space_story_id,
-                page_number=p_data["num"],
-                template_image_url=p_data["url"],
-                face_x=p_data["x"],
-                face_y=p_data["y"],
-                face_width=p_data["w"],
-                face_angle=p_data["a"]
-            )
-            db.add(new_page)
+        if existing:
+            story_id = existing.id
+            print(f"Update existing story: {tmpl['title']}")
+            existing.cover_image_url = tmpl["cover_url"]
+            existing.description = tmpl["description"] # Update description
+            db.commit()
         else:
-            print(f"Updating Page {p_data['num']}...")
-            page.template_image_url = p_data["url"]
-            page.face_x = p_data["x"]
-            page.face_y = p_data["y"]
-            page.face_width = p_data["w"]
-            page.face_angle = p_data["a"]
-            
-    db.commit()
-    
+            print(f"Creating new story: {tmpl['title']}")
+            new_story = Story(
+                title=tmpl["title"],
+                description=tmpl["description"],
+                cover_image_url=tmpl["cover_url"],
+                price=tmpl["price"]
+            )
+            db.add(new_story)
+            db.flush()
+            story_id = new_story.id
+        
+        # We also need to ensure Pages exist? 
+        # For now, let's just ensure the Story record exists so it shows on Home.
+        # The 'pages' logic in seed_stories was for the old DB-driven generator.
+        # The new Phase 2 uses the 'prompts.json' file, so DB pages are less critical 
+        # UNLESS the frontend 'Read' view relies on them.
+        
+        # Let's seed dummy pages just in case frontend crashes without them
+        if db.query(StoryPage).filter(StoryPage.story_id == story_id).count() == 0:
+             # Add a dummy page
+             dummy_page = StoryPage(
+                 story_id=story_id,
+                 page_number=1,
+                 template_image_url=f"{settings.BASE_URL}/static/templates/{tmpl['id']}/pages/p001/bg.png", # Best guess path
+                 face_x=100, face_y=100, face_width=100, face_angle=0
+             )
+             db.add(dummy_page)
+             db.commit()
+
+        results.append({"title": tmpl["title"], "id": str(story_id)})
+
     return {
-        "message": "Successfully seeded/updated The Space Adventure",
-        "story_id": str(space_story_id)
+        "message": "Seeded Templates",
+        "stories": results
     }
