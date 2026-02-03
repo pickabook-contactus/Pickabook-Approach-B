@@ -12,7 +12,7 @@ function CreatePageContent() {
 
     // Dynamic Books
     const [books, setBooks] = useState<Book[]>([]);
-    const [selectedBook, setSelectedBook] = useState<string>(''); // No default initially
+    const [selectedBook, setSelectedBook] = useState<string>('magic_of_money'); // Default to Magic of Money
 
     // Fetch Books
     useEffect(() => {

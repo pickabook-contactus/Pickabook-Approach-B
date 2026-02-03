@@ -51,10 +51,11 @@ def on_startup():
     print("--- [STARTUP] AI Models Ready. ---")
 
 
-from app.api.v1 import orders, stories, ai, test
+from app.api.v1 import orders, stories, ai, test, books
 
 app.include_router(orders.router, prefix="/api/v1/orders", tags=["orders"])
 app.include_router(stories.router, prefix="/api/v1/stories", tags=["stories"])
+app.include_router(books.router, prefix="/api/v1/books", tags=["books"])
 app.include_router(ai.router, prefix="/api/v1/ai", tags=["AI Tooling"])
 app.include_router(test.router, prefix="/api/v1/test", tags=["test"])
 
