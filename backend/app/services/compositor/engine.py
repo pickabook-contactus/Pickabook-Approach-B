@@ -130,22 +130,6 @@ class CompositorEngine:
                     # We simply resize the generated character to the slot dimensions
                     # and place it at the slot coordinates.
                     
-                    # 1. Get Target Dimensions
-                    target_x, target_y = bbox["x"], bbox["y"]
-                    target_w, target_h = bbox["w"], bbox["h"]
-                    
-                    if target_w <= 0 or target_h <= 0:
-                        print(f"Warning: Invalid slot dimensions for {role}: {target_w}x{target_h}")
-                        continue
-
-                    # 2. Resize Generated Character to Fit Slot
-                    # Maintain Aspect Ratio? 
-                    # If we blindly resize to WxH, we might distort.
-                    # Best approach for "Storybook": Resize to FIT within box, centered? 
-                    # OR if the slot represents the exact character bounds, fill it.
-                    # Given checking 'magic_of_money' slots are quite specific, let's try to filling it
-                    # but respecting the alpha.
-                    
                     # 2. Resize Generated Character to Fit Slot (ASPECT RATIO PRESERVED)
                     # ==================================================================
                     # Old Logic: Stretched to fill target_w, target_h (Caused Distortion)
