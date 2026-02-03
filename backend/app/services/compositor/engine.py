@@ -124,73 +124,37 @@ class CompositorEngine:
                     slot_x, slot_y = bbox["x"], bbox["y"]
 
                     # ============================================================
-                    # REFERENCE-ANCHORED PLACEMENT ALGORITHM
+                    # SLOT-BASED PLACEMENT (STRICT)
                     # ============================================================
-                    # 1. Load reference image and find where the character is
-                    # 2. Scale generated character to match reference character size
-                    # 3. Place at exact same position as reference character
-                    # ============================================================
+                    # The user explicitly wants to use slot.json for location.
+                    # We simply resize the generated character to the slot dimensions
+                    # and place it at the slot coordinates.
                     
-                    ref_image_name = f"ref_{role}.png"
-                    ref_image_path = os.path.join(template["dir"], ref_image_name)
+                    # 1. Get Target Dimensions
+                    target_x, target_y = bbox["x"], bbox["y"]
+                    target_w, target_h = bbox["w"], bbox["h"]
                     
-                    if os.path.exists(ref_image_path):
-                        ref_img = Image.open(ref_image_path).convert("RGBA")
-                        
-                        # Find the bounding box of non-transparent pixels in reference
-                        # This tells us WHERE the character is in the reference image
-                        ref_alpha = ref_img.split()[3]
-                        ref_mask = ref_alpha.point(lambda p: 255 if p > 50 else 0)
-                        ref_char_bbox = ref_mask.getbbox()
-                        
-                        if ref_char_bbox:
-                            ref_char_x, ref_char_y, ref_char_x2, ref_char_y2 = ref_char_bbox
-                            ref_char_w = ref_char_x2 - ref_char_x
-                            ref_char_h = ref_char_y2 - ref_char_y
-                            
-                            print(f"Reference {role} character found at: x={ref_char_x}, y={ref_char_y}, w={ref_char_w}, h={ref_char_h}")
-                            
-                            # Find bounding box of generated character
-                            gen_alpha = char_img.split()[3]
-                            gen_mask = gen_alpha.point(lambda p: 255 if p > 50 else 0)
-                            gen_char_bbox = gen_mask.getbbox()
-                            
-                            if gen_char_bbox:
-                                gen_char_x, gen_char_y, gen_char_x2, gen_char_y2 = gen_char_bbox
-                                gen_char_w = gen_char_x2 - gen_char_x
-                                gen_char_h = gen_char_y2 - gen_char_y
-                                
-                                # Crop generated character to its content
-                                gen_cropped = char_img.crop(gen_char_bbox)
-                                
-                                # Scale to match reference character size
-                                resized_char = gen_cropped.resize((ref_char_w, ref_char_h), Image.Resampling.LANCZOS)
-                                
-                                # Calculate placement position
-                                # The reference character was at (ref_char_x, ref_char_y) WITHIN the reference image.
-                                # The reference image itself is placed at (slot_x, slot_y) on the page.
-                                # So final global position is:
-                                final_x = slot_x + ref_char_x
-                                final_y = slot_y + ref_char_y
-                                
-                                print(f"Placing {role} at ({final_x}, {final_y}) with size ({ref_char_w}x{ref_char_h})")
-                                
-                                # Paste
-                                bg_image.alpha_composite(resized_char, (int(final_x), int(final_y)))
-                            else:
-                                print(f"Warning: Generated character for {role} appears empty!")
-                        else:
-                            print(f"Warning: Reference character for {role} appears empty!")
-                        
-                        ref_img.close()
-                    else:
-                        # Fallback: use slot coordinates
-                        bbox = slot["bbox_px"]
-                        slot_x, slot_y = bbox["x"], bbox["y"]
-                        target_w, target_h = bbox["w"], bbox["h"]
-                        print(f"No reference found, using slot: ({slot_x}, {slot_y}) size {target_w}x{target_h}")
-                        resized_char = char_img.resize((target_w, target_h), Image.Resampling.LANCZOS)
-                        bg_image.alpha_composite(resized_char, (int(slot_x), int(slot_y)))
+                    if target_w <= 0 or target_h <= 0:
+                        print(f"Warning: Invalid slot dimensions for {role}: {target_w}x{target_h}")
+                        continue
+
+                    # 2. Resize Generated Character to Fit Slot
+                    # Maintain Aspect Ratio? 
+                    # If we blindly resize to WxH, we might distort.
+                    # Best approach for "Storybook": Resize to FIT within box, centered? 
+                    # OR if the slot represents the exact character bounds, fill it.
+                    # Given checking 'magic_of_money' slots are quite specific, let's try to filling it
+                    # but respecting the alpha.
+                    
+                    # Current Strategy: Exact Resize (Match Slot)
+                    # This assumes slot.json w/h matches the aspect ratio of the pose.
+                    print(f"Placing {role} at ({target_x}, {target_y}) size {target_w}x{target_h}")
+                    
+                    resized_char = char_img.resize((target_w, target_h), Image.Resampling.LANCZOS)
+                    
+                    # 3. Paste
+                    # Use the character's own alpha channel as mask
+                    bg_image.alpha_composite(resized_char, (int(target_x), int(target_y)))
 
             # 5. Save Output
             output_dir = os.path.join(self.assets_root, "orders", "debug_renders")
