@@ -432,8 +432,9 @@ def generate_character_variant(
             full_model_id,
             input={
                 "image_input": images_list, # Key is 'image_input' per user docs
-                "prompt": prompt, # Pass prompt DIRECTLY
-                "safety_settings": "BLOCK_NONE" 
+                "prompt": prompt + " (Vertical Portrait Layout, 3:4 Aspect Ratio)", # Explicit Instruction
+                "safety_settings": "BLOCK_NONE",
+                "aspect_ratio": "3:4" # Parameter enforcement
             }
         )
         
