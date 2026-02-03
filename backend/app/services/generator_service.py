@@ -77,10 +77,7 @@ class GeneratorService:
             print(f"Failed to load prompts for {book_id}: {e}")
         return {}
 
-    def generate_master_character(self, 
-                               order_id: str, 
-                               user_photo_path: str,
-                               master_ref_path: str = None,
+
     def generate_master_character(self, 
                                order_id: str, 
                                user_photo_path: str,
