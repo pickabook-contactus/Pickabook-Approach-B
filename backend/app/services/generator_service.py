@@ -8,57 +8,6 @@ from app.services.storage.supabase_service import SupabaseService
 import json
 
 class GeneratorService:
-    # PROMPTS
-    MASTER_CHARACTER_PROMPT = (
-        "Use Image 1 as the identity reference (real person).\n"
-        "Use Image 2 as the style and body reference.\n\n"
-        "TASK:\n"
-        "Create a high-quality soft 3D storybook cartoon illustration.\n"
-        "The character must have the exact body pose, clothes, and proportions of Image 2.\n"
-        "The character must have the facial identity (hair, skin, features) of Image 1, adapted to the cartoon style of Image 2.\n\n"
-        "STYLE RULES:\n"
-        "- Soft 3D Storybook Cartoon.\n"
-        "- Rounded facial features, gentle gradients, warm pastel tones.\n"
-        "- No photorealism, but utilize soft 3D shading.\n"
-        "- Child-friendly, expressive, joyful.\n\n"
-        "NEGATIVE PROMPT (FORBIDDEN):\n"
-        "- Two people, multiple characters, twin sisters, clone.\n"
-        "- Collage, split screen, before and after, comparison.\n"
-        "- Photorealistic clothes, texture artifacts.\n\n"
-        "CRITICAL:\n"
-        "- Identity must match Image 1 (Face, Hair, Skin).\n"
-        "- CLOTHING must match Image 2 (Structure). Do NOT use clothing from Image 1.\n"
-        "- Pose and Body must match Image 2 exactly.\n"
-        "- Output a SINGLE character on a white background."
-    )
-
-
-    
-    PAGE_CHARACTER_PROMPT = (
-        "ROLE: Expert Digital Compositor.\n\n"
-        "INPUTS:\n"
-        "- Image 1: IDENTITY Source (Face, Hair, Skin Tone).\n"
-        "- Image 2: STRUCTURE Source (Pose, Clothing, Style, Lighting).\n\n"
-        "OBJECTIVE:\n"
-        "Generate a single character that perfectly combines the STRUCTURE of Image 2 with the IDENTITY of Image 1.\n\n"
-        "INSTRUCTIONS:\n"
-        "1.  **Analyze Image 2 (The Target):**\n"
-        "    - Lock onto the character's exact pose, hand position, and head tilt.\n"
-        "    - Lock onto the exact clothing design, folds, and textures.\n"
-        "    - Lock onto the artistic rendering style (shading, outline, color palette).\n"
-        "    - **CRITICAL:** The output MUST look like it belongs in the same visual world as Image 2.\n\n"
-        "2.  **Inject Image 1 (The Identity):**\n"
-        "    - Replace *only* the facial features, Skin colour, and hair with those from Image 1.\n"
-        "    - Keep the expression consistent with the mood of Image 2 (e.g., if Image 2 is smiling, the output must smile).\n\n"
-        "3.  **Final Checks:**\n"
-        "    - **orientation:** Match the Left/Right facing direction of Image 2. DO NOT MIRROR.\n"
-        "    - **Background:** Pure White.\n\n"
-        "NEGATIVE PROMPT:\n"
-        "- Changing the clothes.\n"
-        "- Changing the pose.\n"
-        "- Changing the art style to look like Image 1.\n"
-        "- Distorted hands, extra limbs."
-    )
 
 
     def __init__(self, assets_root: str):
@@ -109,7 +58,10 @@ class GeneratorService:
         
         # Dynamic Prompt Load
         prompts = self._load_book_prompts(book_id)
-        raw_prompt = prompts.get("master_character_prompt", self.MASTER_CHARACTER_PROMPT)
+        raw_prompt = prompts.get("master_character_prompt")
+        if not raw_prompt:
+             raise ValueError(f"CRITICAL: Missing 'master_character_prompt' for book {book_id}. Check assets/templates/{book_id}/v1/prompts.json")
+             
         prompt = raw_prompt.format(role=role, skin_tone=skin_tone)
         
         # If no master ref provided, use a generic one or the user photo itself as ref (Identity+Ref = same)
@@ -183,7 +135,10 @@ class GeneratorService:
              
         # Prompt
         prompts = self._load_book_prompts(book_id)
-        raw_prompt = prompts.get("page_character_prompt", self.PAGE_CHARACTER_PROMPT)
+        raw_prompt = prompts.get("page_character_prompt")
+        if not raw_prompt:
+             raise ValueError(f"CRITICAL: Missing 'page_character_prompt' for book {book_id}. Check assets/templates/{book_id}/v1/prompts.json")
+
         prompt = raw_prompt.format(role=role)
         
         print(f"[Phase 2] Page Gen Prompt Constructed.")
