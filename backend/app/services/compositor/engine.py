@@ -127,9 +127,16 @@ class CompositorEngine:
                     # SLOT-BASED PLACEMENT (STRICT)
                     # ============================================================
                     # The user explicitly wants to use slot.json for location.
-                    # We simply resize the generated character to the slot dimensions
                     # and place it at the slot coordinates.
                     
+                    # 1. Get Target Dimensions
+                    target_x, target_y = bbox["x"], bbox["y"]
+                    target_w, target_h = bbox["w"], bbox["h"]
+                    
+                    if target_w <= 0 or target_h <= 0:
+                        print(f"Warning: Invalid slot dimensions for {role}: {target_w}x{target_h}")
+                        continue
+                        
                     # 2. Resize Generated Character to Fit Slot (ASPECT RATIO PRESERVED)
                     # ==================================================================
                     # Old Logic: Stretched to fill target_w, target_h (Caused Distortion)
