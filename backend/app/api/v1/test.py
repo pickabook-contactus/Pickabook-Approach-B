@@ -143,7 +143,8 @@ def generate_page(
                     order_id=f"test_{book_id}_{test_id}", 
                     user_photo_path=user_photo_path,
                     master_ref_path=master_ref_path, 
-                    role=role
+                    role=role,
+                    book_id=book_id
                 )
                 
                 if master_path:
@@ -162,7 +163,8 @@ def generate_page(
                              master_path=master_path,
                              page_ref_path=page_ref,
                              page_id=page_id,
-                             role=role
+                             role=role,
+                             book_id=book_id
                         )
                     else:
                         print(f"Page Ref Missing: {page_ref}")
