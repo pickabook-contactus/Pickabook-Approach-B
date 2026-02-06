@@ -18,7 +18,16 @@ function CreatePageContent() {
     useEffect(() => {
         api.getBooks().then(data => {
             setBooks(data);
-            if (data.length > 0) setSelectedBook(data[0].id);
+            // Only overwrite if no selection or if strictly needed.
+            // Current default is 'magic_of_money' (hardcoded on Line 15).
+            // If data doesn't contain it, fallback to first.
+            // If data contains it, keep it.
+            const hasMagic = data.find(b => b.id === 'magic_of_money');
+            if (hasMagic) {
+                setSelectedBook('magic_of_money');
+            } else if (data.length > 0) {
+                setSelectedBook(data[0].id);
+            }
         }).catch(err => console.error(err));
     }, []);
 
