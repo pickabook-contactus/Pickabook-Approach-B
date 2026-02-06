@@ -122,7 +122,11 @@ def create_order(order_in: OrderCreate, db: Session = Depends(get_db)):
     # Actually, task reads 'photo_url' arg, but it also queries DB.
     # Let's rely on DB for the second photo.
     
-    process_approach_b.delay(str(db_order.id), db_order.photo_url, target_book_id)
+    # Explicitly pass book_id as kwarg to avoid positional mapping issues with stale workers
+    process_approach_b.apply_async(
+        args=[str(db_order.id), db_order.photo_url],
+        kwargs={"book_id": target_book_id}
+    )
     
     return db_order
 
